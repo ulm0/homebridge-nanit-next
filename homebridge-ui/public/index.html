@@ -88,6 +88,38 @@
     let savedEmail = '';
     let savedPassword = '';
 
+    async function ensurePluginConfig() {
+      try {
+        const configBlocks = await homebridge.getPluginConfig();
+        if (!configBlocks || configBlocks.length === 0) {
+          await homebridge.updatePluginConfig([{
+            platform: 'NanitCamera',
+            name: 'Nanit Camera',
+          }]);
+          await homebridge.savePluginConfig();
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    async function saveRefreshTokenToConfig(refreshToken) {
+      try {
+        let configBlocks = await homebridge.getPluginConfig();
+        if (!configBlocks || configBlocks.length === 0) {
+          configBlocks = [{ platform: 'NanitCamera', name: 'Nanit Camera' }];
+        }
+        const config = configBlocks[0];
+        if (!config.auth) config.auth = {};
+        config.auth.refreshToken = refreshToken;
+        configBlocks[0] = config;
+        await homebridge.updatePluginConfig(configBlocks);
+        await homebridge.savePluginConfig();
+      } catch (e) {
+        console.error('Failed to save refresh token to config:', e);
+      }
+    }
+
     async function checkStatus() {
       try {
         const result = await homebridge.request('/auth/status');
@@ -158,6 +190,7 @@
           showStep('step-mfa');
           document.getElementById('mfa-code').focus();
         } else {
+          await saveRefreshTokenToConfig(result.refreshToken);
           showStep('step-success');
           checkStatus();
         }
@@ -192,6 +225,7 @@
           return;
         }
 
+        await saveRefreshTokenToConfig(result.refreshToken);
         showStep('step-success');
         checkStatus();
       } catch (err) {
@@ -209,8 +243,12 @@
       if (e.key === 'Enter') doMfa();
     });
 
-    // Check status on load
+    ensurePluginConfig();
     checkStatus();
+
+    // Show the standard schema form below this custom UI so users can
+    // configure streamMode, video settings, etc.
+    homebridge.showSchemaForm();
   </script>
 </body>
 </html>

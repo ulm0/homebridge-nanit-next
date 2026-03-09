@@ -49,9 +49,10 @@ export class NanitPlatform implements DynamicPlatformPlugin {
       this.nanitApi,
       streamMode,
       this.pluginConfig.rtmpListenPort,
+      this.pluginConfig.localAddress,
     );
 
-    this.log.debug('Nanit platform initialized');
+    this.log.info('Nanit platform initialized');
 
     this.api.on('didFinishLaunching', () => {
       this.discoverDevices().catch((err) => {
@@ -73,39 +74,51 @@ export class NanitPlatform implements DynamicPlatformPlugin {
   }
 
   private async discoverDevices(): Promise<void> {
-    await loadProto();
+    this.log.info('Nanit: starting device discovery...');
+
+    try {
+      await loadProto();
+    } catch (err) {
+      this.log.error('Nanit: failed to load protobuf schema:', err);
+      return;
+    }
+    this.log.info('Nanit: protobuf schema loaded');
 
     const refreshToken = this.pluginConfig.auth?.refreshToken;
+    this.log.info(`Nanit: initializing auth (refreshToken in config: ${refreshToken ? 'yes' : 'no'})`);
     await this.auth.initialize(refreshToken);
 
     if (!this.auth.refreshToken) {
       this.log.error(
-        'No Nanit credentials configured. Please set up authentication via the plugin settings UI or provide a refresh token in the config.',
+        'Nanit: no credentials found. Authenticate via the plugin settings UI or add a refreshToken to the config.',
       );
       return;
     }
 
+    this.log.info('Nanit: authenticating...');
     try {
       await this.auth.ensureValidToken();
     } catch (err) {
-      this.log.error('Failed to authenticate with Nanit:', err);
+      this.log.error('Nanit: authentication failed:', err);
       return;
     }
+    this.log.info('Nanit: authenticated successfully');
 
+    this.log.info('Nanit: fetching babies/cameras...');
     let babies;
     try {
       babies = await this.nanitApi.getBabies();
     } catch (err) {
-      this.log.error('Failed to fetch babies from Nanit:', err);
+      this.log.error('Nanit: failed to fetch babies:', err);
       return;
     }
 
     if (babies.length === 0) {
-      this.log.warn('No babies/cameras found in your Nanit account');
+      this.log.warn('Nanit: no babies/cameras found in your account');
       return;
     }
 
-    this.log.info(`Found ${babies.length} Nanit camera(s)`);
+    this.log.info(`Nanit: found ${babies.length} camera(s)`);
 
     await this.streamResolver.initialize();
 

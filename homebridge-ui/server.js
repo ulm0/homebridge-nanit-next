@@ -45,7 +45,7 @@ class NanitUiServer extends HomebridgePluginUiServer {
       if (response.status === 201) {
         const data = await response.json();
         await this.saveTokens(data.access_token, data.refresh_token);
-        return { success: true, mfaRequired: false };
+        return { success: true, mfaRequired: false, refreshToken: data.refresh_token };
       }
 
       return { success: false, error: `Unexpected response: ${response.status}` };

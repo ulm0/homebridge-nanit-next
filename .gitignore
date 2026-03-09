@@ -1,4 +1,5 @@
 dist/
 node_modules/
+.homebridge/
 .DS_Store
 *.tgz

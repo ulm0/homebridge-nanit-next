@@ -23,6 +23,7 @@ export interface NanitPlatformConfig {
   };
   streamMode?: StreamMode;
   rtmpListenPort?: number;
+  localAddress?: string;
   cameras?: Array<{
     babyUid?: string;
     name?: string;

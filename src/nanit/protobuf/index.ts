@@ -1,7 +1,10 @@
-import { Root, Type } from 'protobufjs';
+import protobuf from 'protobufjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+
+type Root = protobuf.Root;
+type Type = protobuf.Type;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,7 +28,7 @@ function findProtoFile(): string {
 export async function loadProto(): Promise<void> {
   if (root) return;
   const protoPath = findProtoFile();
-  root = await new Root().load(protoPath);
+  root = await new protobuf.Root().load(protoPath);
   messageType = root.lookupType('nanit.Message');
 }
 
@@ -41,9 +44,7 @@ export function getMessageType(): Type {
 
 export function encodeMessage(obj: Record<string, unknown>): Uint8Array {
   const MessageType = getMessageType();
-  const err = MessageType.verify(obj);
-  if (err) throw new Error(`Protobuf verify error: ${err}`);
-  const message = MessageType.create(obj);
+  const message = MessageType.fromObject(obj);
   return MessageType.encode(message).finish();
 }
 

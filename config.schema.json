@@ -3,6 +3,8 @@
   "pluginType": "platform",
   "singular": true,
   "customUi": true,
+  "headerDisplay": "Authenticate with your Nanit account using the setup wizard above, then restart Homebridge.",
+  "footerDisplay": "For help, see the [README](https://github.com/ulm0/homebridge-nanit#readme).",
   "schema": {
     "type": "object",
     "properties": {
@@ -33,6 +35,16 @@
           { "title": "Cloud only (via Nanit servers)", "enum": ["cloud"] }
         ],
         "description": "How to stream video from the camera. 'Auto' tries local first and falls back to cloud."
+      },
+      "localAddress": {
+        "title": "Homebridge Local IP",
+        "type": "string",
+        "description": "The LAN IP address of this Homebridge instance that cameras can reach. Required in Docker or when multiple network interfaces exist. Leave empty for auto-detect.",
+        "placeholder": "192.168.1.100",
+        "format": "ipv4",
+        "condition": {
+          "functionBody": "return model.streamMode !== 'cloud';"
+        }
       },
       "rtmpListenPort": {
         "title": "RTMP Listen Port",
@@ -136,6 +148,7 @@
       "title": "Streaming",
       "items": [
         "streamMode",
+        "localAddress",
         "rtmpListenPort"
       ]
     },

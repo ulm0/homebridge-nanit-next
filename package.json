@@ -1,8 +1,8 @@
 {
   "name": "homebridge-nanit",
-  "displayName": "Nanit Camera",
+  "displayName": "Nanit",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Homebridge plugin for Nanit baby cameras with native HomeKit integration: live streaming (local/cloud/auto), two-way audio, night light, sound machine, and sensors.",
   "author": "ulm0",
   "license": "MIT",
@@ -16,7 +16,7 @@
   "main": "dist/index.js",
   "engines": {
     "node": "^20.18.0 || ^22.10.0 || ^24.0.0",
-    "homebridge": "^1.8.0 || ^2.0.0-beta.0"
+    "homebridge": "^1.11.0 || ^2.0.0-beta.0"
   },
   "files": [
     "dist",
@@ -28,22 +28,22 @@
     "build": "rimraf ./dist && tsc",
     "watch": "npm run build && npm link && nodemon",
     "prepublishOnly": "npm run build",
-    "dev": "homebridge --debug --ui --plugin-path ."
+    "dev": "npm uninstall -g homebridge-nanit && npm run build && npm i -g . && hb-service run --stdout"
   },
   "dependencies": {
-    "ws": "^8.18.0",
-    "protobufjs": "^7.4.0",
+    "class-validator": "^0.15.1",
     "node-media-server": "^2.7.1",
-    "pick-port": "^2.1.0"
+    "pick-port": "^2.1.0",
+    "protobufjs": "^7.4.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "homebridge": "^2.0.0-beta.55",
-    "homebridge-config-ui-x": "^5.19.0",
     "@homebridge/plugin-ui-utils": "^1.0.3",
     "@types/node": "^22.15.0",
     "@types/ws": "^8.18.0",
-    "typescript": "^5.8.3",
+    "homebridge": "^1.11.2",
+    "nodemon": "^3.1.11",
     "rimraf": "^6.1.0",
-    "nodemon": "^3.1.11"
+    "typescript": "^5.8.3"
   }
 }

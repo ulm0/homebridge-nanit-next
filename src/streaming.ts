@@ -22,7 +22,7 @@ import {
 } from 'homebridge';
 import { createSocket, type Socket } from 'node:dgram';
 import { pickPort } from 'pick-port';
-import { FfmpegProcess, findFfmpeg } from './utils.js';
+import { FfmpegProcess, findFfmpeg, detectAacEncoder } from './utils.js';
 import type { StreamResolver } from './stream/resolver.js';
 import type { NanitWebSocketClient } from './nanit/websocket.js';
 import type { NanitApiClient } from './nanit/api.js';
@@ -55,6 +55,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly videoProcessor: string;
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
+  private cachedSnapshot: Buffer | null = null;
 
   private readonly maxWidth: number;
   private readonly maxHeight: number;
@@ -127,40 +128,21 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   }
 
   async handleSnapshotRequest(request: SnapshotRequest, callback: SnapshotRequestCallback): Promise<void> {
-    try {
-      const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
+    const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
+    if (snapshot && snapshot.length > 0) {
+      this.cachedSnapshot = snapshot;
       callback(undefined, snapshot);
-    } catch (err) {
-      this.log.error(`[${this.cameraName}] Snapshot failed:`, err);
-
-      try {
-        const streamInfo = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
-        const ffmpeg = new FfmpegProcess(this.log, `${this.cameraName} Snapshot`, this.videoProcessor, this.debug);
-
-        const snapshotBuffer = await new Promise<Buffer>((resolve, reject) => {
-          const args = `-i ${streamInfo.url} -frames:v 1 -f image2 -vf scale=${request.width}:${request.height} -hide_banner -loglevel error pipe:1`;
-          const proc = ffmpeg.start(args, (code) => {
-            if (code !== 0 && !ffmpeg.killed) reject(new Error(`ffmpeg exited ${code}`));
-          });
-
-          let buffer = Buffer.alloc(0);
-          proc.stdout?.on('data', (data: Buffer) => {
-            buffer = Buffer.concat([buffer, data]);
-          });
-          proc.stdout?.on('end', () => resolve(buffer));
-
-          setTimeout(() => {
-            ffmpeg.stop();
-            reject(new Error('Snapshot timeout'));
-          }, 15_000);
-        });
-
-        callback(undefined, snapshotBuffer);
-      } catch (fallbackErr) {
-        this.log.error(`[${this.cameraName}] Snapshot fallback failed:`, fallbackErr);
-        callback(fallbackErr as Error);
-      }
+      return;
     }
+
+    if (this.cachedSnapshot) {
+      this.log.debug(`[${this.cameraName}] Using cached snapshot`);
+      callback(undefined, this.cachedSnapshot);
+      return;
+    }
+
+    this.log.debug(`[${this.cameraName}] No snapshot available`);
+    callback(new Error('No snapshot available'));
   }
 
   async prepareStream(request: PrepareStreamRequest, callback: PrepareStreamCallback): Promise<void> {
@@ -249,49 +231,64 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     this.log.info(`[${this.cameraName}] Starting ${streamInfo.type} stream: ${width}x${height}@${fps}fps ${videoBitrate}kbps`);
 
-    let ffmpegArgs = `-i ${streamInfo.url}`;
+    const isRtmp = streamInfo.url.startsWith('rtmp');
 
-    // Video encoding
-    ffmpegArgs += ` -an -sn -dn`;
-    ffmpegArgs += ` -codec:v ${vcodec}`;
-    ffmpegArgs += ` -pix_fmt yuv420p`;
-    ffmpegArgs += ` -color_range mpeg`;
-    ffmpegArgs += ` -r ${fps}`;
-    ffmpegArgs += ` -f rawvideo`;
-    ffmpegArgs += ` -preset ultrafast -tune zerolatency`;
-    ffmpegArgs += ` -filter:v scale=${width}:${height}`;
-    ffmpegArgs += ` -b:v ${videoBitrate}k`;
-    ffmpegArgs += ` -payload_type ${request.video.pt}`;
+    const ffmpegParts: string[] = [
+      `-hide_banner`,
+      `-loglevel level${this.debug ? '+verbose' : '+warning'}`,
+    ];
 
-    // Video SRTP output
-    ffmpegArgs += ` -ssrc ${sessionInfo.videoSSRC}`;
-    ffmpegArgs += ` -f rtp`;
-    ffmpegArgs += ` -srtp_out_suite AES_CM_128_HMAC_SHA1_80`;
-    ffmpegArgs += ` -srtp_out_params ${sessionInfo.videoSRTP.toString('base64')}`;
-    ffmpegArgs += ` srtp://${sessionInfo.address}:${sessionInfo.videoPort}?rtcpport=${sessionInfo.videoPort}&pkt_size=${mtu}`;
-
-    // Audio encoding
-    if (this.enableAudio) {
-      ffmpegArgs += ` -vn -sn -dn`;
-      ffmpegArgs += ` -codec:a libfdk_aac`;
-      ffmpegArgs += ` -profile:a aac_eld`;
-      ffmpegArgs += ` -flags +global_header`;
-      ffmpegArgs += ` -f null`;
-      ffmpegArgs += ` -ar ${request.audio.sample_rate}k`;
-      ffmpegArgs += ` -b:a ${request.audio.max_bit_rate}k`;
-      ffmpegArgs += ` -ac ${request.audio.channel}`;
-      ffmpegArgs += ` -payload_type ${request.audio.pt}`;
-
-      // Audio SRTP output
-      ffmpegArgs += ` -ssrc ${sessionInfo.audioSSRC}`;
-      ffmpegArgs += ` -f rtp`;
-      ffmpegArgs += ` -srtp_out_suite AES_CM_128_HMAC_SHA1_80`;
-      ffmpegArgs += ` -srtp_out_params ${sessionInfo.audioSRTP.toString('base64')}`;
-      ffmpegArgs += ` srtp://${sessionInfo.address}:${sessionInfo.audioPort}?rtcpport=${sessionInfo.audioPort}&pkt_size=188`;
+    if (isRtmp) {
+      ffmpegParts.push(
+        `-analyzeduration 5000000`,
+        `-probesize 5000000`,
+        `-rw_timeout 10000000`,
+      );
     }
 
-    ffmpegArgs += ` -loglevel level${this.debug ? '+verbose' : ''}`;
-    ffmpegArgs += ` -progress pipe:1`;
+    ffmpegParts.push(
+      `-i ${streamInfo.url}`,
+      `-map 0:v:0`,
+      `-codec:v ${vcodec}`,
+      `-pix_fmt yuv420p`,
+      `-color_range mpeg`,
+      `-preset ultrafast`,
+      `-tune zerolatency`,
+      `-r ${fps}`,
+      `-vf scale=${width}:${height}`,
+      `-b:v ${videoBitrate}k`,
+      `-bufsize ${videoBitrate * 2}k`,
+      `-maxrate ${videoBitrate}k`,
+      `-payload_type ${request.video.pt}`,
+      `-ssrc ${sessionInfo.videoSSRC}`,
+      `-f rtp`,
+      `-srtp_out_suite AES_CM_128_HMAC_SHA1_80`,
+      `-srtp_out_params ${sessionInfo.videoSRTP.toString('base64')}`,
+      `srtp://${sessionInfo.address}:${sessionInfo.videoPort}?rtcpport=${sessionInfo.videoPort}&pkt_size=${mtu}`,
+    );
+
+    if (this.enableAudio) {
+      const aacEncoder = detectAacEncoder(this.videoProcessor, this.log);
+      ffmpegParts.push(
+        `-map 0:a:0?`,
+        `-codec:a ${aacEncoder.codec}`,
+        ...aacEncoder.profileArgs,
+        `-flags +global_header`,
+        `-ar ${request.audio.sample_rate}k`,
+        `-b:a ${request.audio.max_bit_rate}k`,
+        `-ac ${request.audio.channel}`,
+        `-payload_type ${request.audio.pt}`,
+        `-ssrc ${sessionInfo.audioSSRC}`,
+        `-f rtp`,
+        `-srtp_out_suite AES_CM_128_HMAC_SHA1_80`,
+        `-srtp_out_params ${sessionInfo.audioSRTP.toString('base64')}`,
+        `srtp://${sessionInfo.address}:${sessionInfo.audioPort}?rtcpport=${sessionInfo.audioPort}&pkt_size=188`,
+      );
+    }
+
+    ffmpegParts.push(`-progress pipe:1`);
+
+    const ffmpegArgs = ffmpegParts.join(' ');
 
     const activeSession: ActiveSession = {};
 
@@ -334,45 +331,15 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   }
 
   private setupReturnAudio(
-    request: StartStreamRequest,
-    sessionInfo: SessionInfo,
-    activeSession: ActiveSession,
+    _request: StartStreamRequest,
+    _sessionInfo: SessionInfo,
+    _activeSession: ActiveSession,
   ): void {
-    const ipVer = sessionInfo.ipv6 ? 'IP6' : 'IP4';
-
-    const sdp = [
-      'v=0',
-      `o=- 0 0 IN ${ipVer} ${sessionInfo.address}`,
-      's=Talk',
-      `c=IN ${ipVer} ${sessionInfo.address}`,
-      't=0 0',
-      `m=audio ${sessionInfo.audioReturnPort} RTP/AVP 110`,
-      'b=AS:24',
-      'a=rtpmap:110 MPEG4-GENERIC/16000/1',
-      'a=rtcp-mux',
-      'a=fmtp:110 profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3; config=F8F0212C00BC00',
-      `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:${sessionInfo.audioSRTP.toString('base64')}`,
-    ].join('\r\n');
-
-    const returnArgs = [
-      '-hide_banner',
-      '-protocol_whitelist pipe,udp,rtp,file,crypto',
-      '-f sdp',
-      '-c:a libfdk_aac',
-      '-i pipe:',
-      '-f flv rtmp://localhost/nanit-return',
-      `-loglevel level${this.debug ? '+verbose' : ''}`,
-    ].join(' ');
-
-    const returnProcess = new FfmpegProcess(
-      this.log,
-      `${this.cameraName} Two-way`,
-      this.videoProcessor,
-      this.debug,
-    );
-    const proc = returnProcess.start(returnArgs);
-    proc.stdin?.end(sdp);
-    activeSession.returnProcess = returnProcess;
+    // Two-way audio requires forwarding the HomeKit return audio stream
+    // to the camera, which is not yet supported by the Nanit WebSocket
+    // protocol. The microphone icon will still appear in HomeKit but
+    // audio sent from the Home app will be silently discarded.
+    this.log.debug(`[${this.cameraName}] Two-way audio return channel not yet implemented`);
   }
 
   private stopStream(sessionId: string): void {
@@ -384,6 +351,13 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       try { session.returnProcess?.stop(); } catch { /* ignore */ }
     }
     this.ongoingSessions.delete(sessionId);
+
+    if (this.ongoingSessions.size === 0) {
+      this.streamResolver.stopStream(this.wsClient).catch(() => {
+        // Best effort
+      });
+    }
+
     this.log.info(`[${this.cameraName}] Stream stopped`);
   }
 }

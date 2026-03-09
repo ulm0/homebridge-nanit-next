@@ -474,14 +474,14 @@ export class NanitWebSocketClient {
     this.emitStateChange({ isStreaming: true });
   }
 
-  async stopStreaming(rtmpUrl: string): Promise<void> {
+  async stopStreaming(): Promise<void> {
     this.log.info('Requesting camera to stop streaming');
     try {
       await this.sendRequest('PUT_STREAMING', {
         streaming: {
           id: 'MOBILE',
           status: 'STOPPED',
-          rtmpUrl,
+          rtmpUrl: '',
         },
       });
     } catch {

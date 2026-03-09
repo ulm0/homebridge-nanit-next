@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import type { Logging } from 'homebridge';
 
 export class FfmpegProcess {
@@ -21,10 +21,12 @@ export class FfmpegProcess {
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
-      if (this.debug) {
-        const lines = data.toString().split('\n').filter((l: string) => l.length > 0);
-        for (const line of lines) {
+      const lines = data.toString().split('\n').filter((l: string) => l.length > 0);
+      for (const line of lines) {
+        if (this.debug) {
           this.log.debug(`[${this.name}] ${line}`);
+        } else if (line.includes('Error') || line.includes('error') || line.includes('Invalid')) {
+          this.log.warn(`[${this.name}] ${line}`);
         }
       }
     });
@@ -62,4 +64,44 @@ export class FfmpegProcess {
 
 export function findFfmpeg(): string {
   return process.env.FFMPEG_PATH || 'ffmpeg';
+}
+
+export interface AacEncoder {
+  codec: string;
+  profileArgs: string[];
+}
+
+const AAC_CANDIDATES: Array<{ codec: string; profileArgs: string[] }> = [
+  { codec: 'libfdk_aac', profileArgs: ['-profile:a', 'aac_eld'] },
+  { codec: 'aac_at', profileArgs: ['-aac_at_mode', 'cvbr'] },
+  { codec: 'aac', profileArgs: [] },
+];
+
+let cachedAacEncoder: AacEncoder | null = null;
+
+export function detectAacEncoder(ffmpegPath: string, log?: Logging): AacEncoder {
+  if (cachedAacEncoder) return cachedAacEncoder;
+
+  let encoderList = '';
+  try {
+    encoderList = execFileSync(ffmpegPath, ['-encoders', '-hide_banner'], {
+      timeout: 5000,
+    }).toString();
+  } catch {
+    log?.warn('Could not query ffmpeg encoders, defaulting to built-in aac');
+    cachedAacEncoder = { codec: 'aac', profileArgs: [] };
+    return cachedAacEncoder;
+  }
+
+  for (const candidate of AAC_CANDIDATES) {
+    if (encoderList.includes(` ${candidate.codec} `) || encoderList.includes(` ${candidate.codec}\n`)) {
+      log?.info(`Using AAC encoder: ${candidate.codec}`);
+      cachedAacEncoder = candidate;
+      return cachedAacEncoder;
+    }
+  }
+
+  log?.warn('No known AAC encoder found, defaulting to built-in aac');
+  cachedAacEncoder = { codec: 'aac', profileArgs: [] };
+  return cachedAacEncoder;
 }

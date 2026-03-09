@@ -68,31 +68,23 @@ export class NanitApiClient {
     return this.babies;
   }
 
-  async getSnapshot(babyUid: string): Promise<Buffer> {
+  async getSnapshot(babyUid: string): Promise<Buffer | null> {
     const token = await this.auth.ensureValidToken();
 
-    const response = await fetch(`${NANIT_API_BASE}/babies/${babyUid}/snapshot`, {
-      headers: {
-        'Authorization': token,
-      },
+    let response = await fetch(`${NANIT_API_BASE}/babies/${babyUid}/snapshot`, {
+      headers: { 'Authorization': token },
     });
 
     if (response.status === 401) {
       const newToken = await this.auth.refreshAccessToken();
-      const retryResponse = await fetch(`${NANIT_API_BASE}/babies/${babyUid}/snapshot`, {
+      response = await fetch(`${NANIT_API_BASE}/babies/${babyUid}/snapshot`, {
         headers: { 'Authorization': newToken },
       });
-
-      if (!retryResponse.ok) {
-        throw new Error(`Snapshot request failed: ${retryResponse.status}`);
-      }
-
-      const arrayBuf = await retryResponse.arrayBuffer();
-      return Buffer.from(arrayBuf);
     }
 
     if (!response.ok) {
-      throw new Error(`Snapshot request failed: ${response.status}`);
+      this.log.debug(`Snapshot endpoint returned ${response.status} for baby ${babyUid}`);
+      return null;
     }
 
     const arrayBuf = await response.arrayBuffer();
