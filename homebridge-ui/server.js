@@ -1,5 +1,5 @@
 import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const NANIT_API_BASE = 'https://api.nanit.com';
@@ -11,6 +11,7 @@ class NanitUiServer extends HomebridgePluginUiServer {
     this.onRequest('/auth/login', this.handleLogin.bind(this));
     this.onRequest('/auth/mfa', this.handleMfa.bind(this));
     this.onRequest('/auth/status', this.handleStatus.bind(this));
+    this.onRequest('/auth/disconnect', this.handleDisconnect.bind(this));
 
     this.ready();
   }
@@ -96,6 +97,40 @@ class NanitUiServer extends HomebridgePluginUiServer {
       };
     } catch {
       return { authenticated: false, hasAccessToken: false };
+    }
+  }
+
+  async handleDisconnect() {
+    try {
+      // Delete the token file
+      const tokenPath = join(this.homebridgeStoragePath, 'nanit-tokens.json');
+      try {
+        await unlink(tokenPath);
+      } catch {
+        // File may not exist — that's fine
+      }
+
+      // Remove auth.refreshToken from the plugin config
+      try {
+        const configBlocks = await this.getPluginConfig();
+        if (configBlocks && configBlocks.length > 0) {
+          const config = configBlocks[0];
+          if (config.auth) {
+            delete config.auth.refreshToken;
+            if (Object.keys(config.auth).length === 0) {
+              delete config.auth;
+            }
+          }
+          await this.updatePluginConfig([config]);
+          await this.savePluginConfig();
+        }
+      } catch {
+        // Config update is best-effort
+      }
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
     }
   }
 

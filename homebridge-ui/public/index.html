@@ -6,37 +6,101 @@
   <title>Nanit Camera Setup</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; }
-    .container { max-width: 480px; margin: 0 auto; padding: 24px; }
-    h2 { font-size: 20px; margin-bottom: 16px; color: #1a1a1a; }
-    p { font-size: 14px; color: #666; margin-bottom: 16px; line-height: 1.5; }
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #444; }
-    input[type="email"], input[type="password"], input[type="text"] {
-      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
-      font-size: 14px; transition: border-color 0.2s;
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #333;
+      background: transparent;
     }
+
+    @media (prefers-color-scheme: dark) {
+      body { color: #e0e0e0; }
+    }
+
+    .container { max-width: 480px; margin: 0 auto; padding: 24px; }
+
+    h2 { font-size: 20px; margin-bottom: 16px; color: #1a1a1a; }
+    @media (prefers-color-scheme: dark) { h2 { color: #f0f0f0; } }
+
+    p { font-size: 14px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+    @media (prefers-color-scheme: dark) { p { color: #aaa; } }
+
+    .form-group { margin-bottom: 16px; }
+
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #444; }
+    @media (prefers-color-scheme: dark) { label { color: #ccc; } }
+
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+      background: #fff;
+      color: #333;
+    }
+    @media (prefers-color-scheme: dark) {
+      input[type="email"], input[type="password"], input[type="text"] {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border-color: #444;
+      }
+      input::placeholder { color: #666; }
+    }
+
     input:focus { outline: none; border-color: #7c5cfc; }
+
     .btn {
       display: inline-block; padding: 10px 24px; border: none; border-radius: 8px;
       font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
     }
     .btn-primary { background: #7c5cfc; color: #fff; }
     .btn-primary:hover { background: #6a4ce0; }
-    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-primary:disabled { background: #555; color: #999; cursor: not-allowed; }
+    @media (prefers-color-scheme: light) {
+      .btn-primary:disabled { background: #ccc; color: #fff; }
+    }
+
+    .btn-danger { background: transparent; color: #c33; border: 1px solid #c33; }
+    .btn-danger:hover { background: #fee; }
+    @media (prefers-color-scheme: dark) {
+      .btn-danger { color: #f08080; border-color: #f08080; }
+      .btn-danger:hover { background: #3a1a1a; }
+    }
+
     .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+
     .alert-error { background: #fee; color: #c33; border: 1px solid #fcc; }
     .alert-success { background: #efe; color: #363; border: 1px solid #cec; }
     .alert-info { background: #eef; color: #336; border: 1px solid #cce; }
+
+    @media (prefers-color-scheme: dark) {
+      .alert-error { background: #3a1a1a; color: #f08080; border-color: #6a2a2a; }
+      .alert-success { background: #1a3a1a; color: #80d080; border-color: #2a6a2a; }
+      .alert-info { background: #1a1a3a; color: #8080d0; border-color: #2a2a6a; }
+    }
+
     .step { display: none; }
     .step.active { display: block; }
-    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff;
-      border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite;
-      vertical-align: middle; margin-right: 8px; }
+
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+
     .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+
     .status-connected { background: #d4edda; color: #155724; }
     .status-disconnected { background: #f8d7da; color: #721c24; }
+
+    @media (prefers-color-scheme: dark) {
+      .status-connected { background: #1a3a22; color: #6fcf84; }
+      .status-disconnected { background: #3a1a1a; color: #f08080; }
+    }
   </style>
 </head>
 <body>
@@ -47,7 +111,7 @@
     </div>
 
     <!-- Step 1: Login -->
-    <div id="step-login" class="step active">
+    <div id="step-login" class="step">
       <h2>Connect your Nanit account</h2>
       <p>Enter your Nanit account credentials to link your cameras with HomeKit.</p>
       <div id="login-error"></div>
@@ -74,12 +138,25 @@
       <button id="btn-mfa" class="btn btn-primary" onclick="doMfa()">Verify</button>
     </div>
 
-    <!-- Step 3: Success -->
+    <!-- Step 3: Already authenticated / success -->
     <div id="step-success" class="step">
       <div class="alert alert-success">
         <strong>Connected!</strong> Your Nanit account has been linked successfully. Your cameras will appear in HomeKit after Homebridge restarts.
       </div>
-      <p>You can close this window now. If you need to reconfigure, simply re-enter your credentials above.</p>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-primary" onclick="showStep('step-login')">Sign in with a different account</button>
+        <button id="btn-disconnect" class="btn btn-danger" onclick="confirmDisconnect()">Disconnect account</button>
+      </div>
+      <div id="disconnect-confirm" style="display:none; margin-top: 16px;">
+        <div class="alert alert-error" style="margin-bottom: 12px;">
+          This will remove your credentials from Homebridge. Your cameras will stop working until you sign in again.
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="btn-disconnect-confirm" class="btn btn-danger" onclick="doDisconnect()">Yes, disconnect</button>
+          <button class="btn btn-primary" onclick="cancelDisconnect()">Cancel</button>
+        </div>
+      </div>
+      <div id="disconnect-error" style="margin-top: 12px;"></div>
     </div>
   </div>
 
@@ -126,17 +203,67 @@
         const statusEl = document.getElementById('auth-status');
         if (result.authenticated) {
           statusEl.innerHTML = '<span class="status-badge status-connected">Authenticated</span>';
+          // If no step is currently visible, show the connected state directly
+          const anyActive = document.querySelector('.step.active');
+          if (!anyActive) showStep('step-success');
         } else {
           statusEl.innerHTML = '<span class="status-badge status-disconnected">Not connected</span>';
+          const anyActive = document.querySelector('.step.active');
+          if (!anyActive) showStep('step-login');
         }
       } catch (e) {
-        // ignore
+        // On error show the login form so the user can still proceed
+        const anyActive = document.querySelector('.step.active');
+        if (!anyActive) showStep('step-login');
       }
     }
 
     function showStep(stepId) {
       document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
       document.getElementById(stepId).classList.add('active');
+      // Reset disconnect confirmation whenever we navigate away from success step
+      cancelDisconnect();
+    }
+
+    function confirmDisconnect() {
+      document.getElementById('disconnect-confirm').style.display = 'block';
+      document.getElementById('btn-disconnect').style.display = 'none';
+      document.getElementById('disconnect-error').innerHTML = '';
+    }
+
+    function cancelDisconnect() {
+      const confirm = document.getElementById('disconnect-confirm');
+      const btn = document.getElementById('btn-disconnect');
+      if (confirm) confirm.style.display = 'none';
+      if (btn) btn.style.display = '';
+      const err = document.getElementById('disconnect-error');
+      if (err) err.innerHTML = '';
+    }
+
+    async function doDisconnect() {
+      const btn = document.getElementById('btn-disconnect-confirm');
+      btn.disabled = true;
+      btn.dataset.originalText = btn.textContent;
+      btn.innerHTML = '<span class="spinner"></span>Disconnecting...';
+
+      try {
+        const result = await homebridge.request('/auth/disconnect');
+        if (!result.success) {
+          document.getElementById('disconnect-error').innerHTML =
+            `<div class="alert alert-error">${result.error || 'Failed to disconnect'}</div>`;
+          return;
+        }
+        // Reset UI to login state
+        document.getElementById('auth-status').innerHTML =
+          '<span class="status-badge status-disconnected">Not connected</span>';
+        showStep('step-login');
+      } catch (err) {
+        document.getElementById('disconnect-error').innerHTML =
+          `<div class="alert alert-error">${err.message || 'Connection error'}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.originalText || 'Yes, disconnect';
+      }
     }
 
     function showError(containerId, message) {

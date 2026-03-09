@@ -13,6 +13,9 @@ import type {
   StartStreamRequest,
   StreamingRequest,
   StreamRequestCallback,
+  CameraRecordingOptions,
+  CameraRecordingDelegate,
+  Service,
 } from 'homebridge';
 import {
   APIEvent,
@@ -64,6 +67,9 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly enableAudio: boolean;
   private readonly debug: boolean;
 
+  /** Set to a function that returns true if the HKSV prebuffer is active */
+  isPrebufferActive: (() => boolean) | undefined;
+
   constructor(
     private readonly log: Logging,
     private readonly hap: HAP,
@@ -74,6 +80,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     private readonly wsClient: NanitWebSocketClient,
     private readonly nanitApi: NanitApiClient,
     config: NanitPlatformConfig,
+    recordingOptions?: { options: CameraRecordingOptions; delegate: CameraRecordingDelegate; motionService: Service },
   ) {
     this.videoProcessor = findFfmpeg();
     this.maxWidth = config.videoConfig?.maxWidth ?? 1280;
@@ -122,6 +129,15 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
           ],
         },
       },
+      ...(recordingOptions && {
+        recording: {
+          options: recordingOptions.options,
+          delegate: recordingOptions.delegate,
+        },
+        sensors: {
+          motion: recordingOptions.motionService,
+        },
+      }),
     };
 
     this.controller = new hap.CameraController(options);
@@ -376,9 +392,13 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.ongoingSessions.delete(sessionId);
 
     if (this.ongoingSessions.size === 0) {
-      this.streamResolver.stopStream(this.wsClient).catch(() => {
-        // Best effort
-      });
+      if (this.isPrebufferActive?.()) {
+        this.log.debug(`[${this.cameraName}] Not stopping camera stream — prebuffer is still active`);
+      } else {
+        this.streamResolver.stopStream(this.wsClient).catch(() => {
+          // Best effort
+        });
+      }
     }
 
     this.log.info(`[${this.cameraName}] Stream stopped`);

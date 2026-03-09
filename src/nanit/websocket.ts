@@ -26,6 +26,7 @@ export class NanitWebSocketClient {
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private stateListeners = new Set<CameraStateListener>();
+  private motionListeners = new Set<(timestamp: number) => void>();
   private _isConnected = false;
   private destroyed = false;
   private connectionMode: 'cloud' | 'local' = 'cloud';
@@ -58,6 +59,11 @@ export class NanitWebSocketClient {
   onStateChange(listener: CameraStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
+  }
+
+  onMotionDetected(listener: (timestamp: number) => void): () => void {
+    this.motionListeners.add(listener);
+    return () => { this.motionListeners.delete(listener); };
   }
 
   private emitStateChange(partial: Partial<CameraState>): void {
@@ -316,7 +322,14 @@ export class NanitWebSocketClient {
           if (timestamp !== undefined) sensors.soundTimestamp = timestamp;
           break;
         case 'MOTION':
-          if (timestamp !== undefined) sensors.motionTimestamp = timestamp;
+          if (timestamp !== undefined) {
+            sensors.motionTimestamp = timestamp;
+            if (timestamp > 0) {
+              for (const listener of this.motionListeners) {
+                try { listener(timestamp); } catch { /* ignore */ }
+              }
+            }
+          }
           break;
       }
     }
@@ -544,5 +557,6 @@ export class NanitWebSocketClient {
     this.destroyed = true;
     this.disconnect();
     this.stateListeners.clear();
+    this.motionListeners.clear();
   }
 }

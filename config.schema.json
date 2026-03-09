@@ -55,6 +55,12 @@
           "functionBody": "return model.streamMode !== 'cloud';"
         }
       },
+      "enableHksv": {
+        "title": "[Experimental] Enable HomeKit Secure Video (HKSV)",
+        "type": "boolean",
+        "default": false,
+        "description": "Enable HomeKit Secure Video recording. Requires an iCloud storage plan and a HomeKit hub (HomePod, Apple TV 4K, or iPad). Disabling this removes the motion sensor and cloud recording capability. This feature is experimental and may not work as expected. This feature is disabled by default because it may causes 403 errors with the Nanit API."
+      },
       "cameras": {
         "title": "Camera Configuration",
         "type": "array",
@@ -149,7 +155,8 @@
       "items": [
         "streamMode",
         "localAddress",
-        "rtmpListenPort"
+        "rtmpListenPort",
+        "enableHksv"
       ]
     },
     {

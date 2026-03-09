@@ -42,7 +42,11 @@ export class LocalRtmpServer {
     this.nms = new NodeMediaServer(config);
 
     this.nms.on('prePublish', (...args: unknown[]) => {
-      const streamPath = args[1] as string;
+      // node-media-server v4: event passes a session object with a streamPath property.
+      // v2 legacy: (id, streamPath, params) — kept as fallback.
+      const session = args[0] as Record<string, unknown>;
+      const streamPath = (typeof session?.streamPath === 'string' ? session.streamPath : args[1]) as string;
+      if (!streamPath) return;
       if (this.activeStreams.has(streamPath)) {
         this.log.debug(`RTMP stream already tracked, ignoring duplicate prePublish: ${streamPath}`);
         return;
@@ -57,7 +61,9 @@ export class LocalRtmpServer {
     });
 
     this.nms.on('donePublish', (...args: unknown[]) => {
-      const streamPath = args[1] as string;
+      const session = args[0] as Record<string, unknown>;
+      const streamPath = (typeof session?.streamPath === 'string' ? session.streamPath : args[1]) as string;
+      if (!streamPath) return;
       this.log.debug(`RTMP stream ended: ${streamPath}`);
       this.activeStreams.delete(streamPath);
     });
