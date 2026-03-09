@@ -26,6 +26,10 @@ export class FfmpegProcess {
         if (this.debug) {
           this.log.debug(`[${this.name}] ${line}`);
         } else if (line.includes('Error') || line.includes('error') || line.includes('Invalid')) {
+          // Suppress known non-fatal AAC-ELD sync errors from libfdk_aac when decoding HomeKit audio
+          if (line.includes('aacDecoder_DecodeFrame') || line.includes('Error submitting packet to decoder')) {
+            continue;
+          }
           this.log.warn(`[${this.name}] ${line}`);
         }
       }

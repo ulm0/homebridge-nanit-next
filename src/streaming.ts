@@ -448,7 +448,14 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       this.log, `${this.cameraName}/talkback`, this.videoProcessor, this.debug,
     );
     const proc = returnProcess.start(returnFfmpegArgs, (code) => {
-      this.log.debug(`[${this.cameraName}] Talk-back FFmpeg exited with code ${code}`);
+      if (code !== 0 && code !== null) {
+        this.log.warn(
+          `[${this.cameraName}] Talk-back pipeline exited (code ${code}). ` +
+          `Camera at ${cameraLocalIp} may not support RTSP ANNOUNCE on port 554.`,
+        );
+      } else {
+        this.log.debug(`[${this.cameraName}] Talk-back FFmpeg exited with code ${code}`);
+      }
     });
     activeSession.returnProcess = returnProcess;
 

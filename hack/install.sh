@@ -1,4 +1,4 @@
-npm install --prefix /homebridge --ignore-scripts homebridge-nanit-1.3.9.tgz && \
+npm install --prefix /homebridge --ignore-scripts homebridge-nanit-1.3.11.tgz && \
 node -e " \
         const fs = require(\"fs\"); \
         const pkg = JSON.parse(fs.readFileSync(\"/homebridge/package.json\",\"utf8\")); \
