@@ -15,7 +15,7 @@ Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 
 ## Requirements
 
-- [Homebridge](https://homebridge.io) v1.8+ or v2.0+
+- [Homebridge](https://homebridge.io) v1.11+ or v2.0+
 - Node.js 20+ or 22+
 - [FFmpeg](https://ffmpeg.org/) installed on the system
 - A Nanit account with at least one camera

@@ -200,7 +200,25 @@ export class StreamResolver {
     return null;
   }
 
-  private getLocalAddress(): string {
+  /**
+   * Returns an RTMP ingest URL (reachable by the camera) for the given stream
+   * key on the local RTMP server. The server must be running.
+   */
+  getLocalRtmpIngestUrl(streamKey: string): string | null {
+    if (!this.rtmpServer.isRunning) return null;
+    return this.rtmpServer.getLocalRtmpUrl(streamKey, this.getLocalAddress());
+  }
+
+  /**
+   * Returns the IP address from which the camera is publishing its RTMP
+   * stream. This is the camera's LAN IP, auto-detected from the RTMP session.
+   * Returns null if the stream is not active or the IP is unknown.
+   */
+  getCameraPublisherIp(babyUid: string): string | null {
+    return this.rtmpServer.getPublisherIp(babyUid);
+  }
+
+  getLocalAddress(): string {
     if (this.configuredAddress) {
       return this.configuredAddress;
     }

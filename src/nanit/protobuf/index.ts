@@ -55,6 +55,7 @@ export function decodeMessage(buffer: Uint8Array): Record<string, unknown> {
     longs: Number,
     enums: String,
     defaults: true,
+    bytes: String,
   }) as Record<string, unknown>;
 }
 
