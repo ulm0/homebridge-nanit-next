@@ -7,6 +7,8 @@ export class LocalRtmpServer {
   private nms: InstanceType<typeof import('node-media-server').default> | null = null;
   private activeStreams = new Set<string>();
   private streamWaiters = new Map<string, Array<() => void>>();
+  /** Maps stream path → publisher IP (extracted from the RTMP session remote address) */
+  private publisherIps = new Map<string, string>();
 
   constructor(
     private readonly log: Logging,
@@ -53,6 +55,16 @@ export class LocalRtmpServer {
       }
       this.log.debug(`RTMP stream publishing: ${streamPath}`);
       this.activeStreams.add(streamPath);
+
+      // Extract and store the publisher's IP so callers can discover the camera's address
+      const socket = session?.socket as Record<string, unknown> | undefined;
+      const remoteAddress = socket?.remoteAddress as string | undefined;
+      if (remoteAddress) {
+        // Strip IPv4-mapped IPv6 prefix (::ffff:x.x.x.x → x.x.x.x)
+        const ip = remoteAddress.replace(/^::ffff:/, '');
+        this.publisherIps.set(streamPath, ip);
+      }
+
       const waiters = this.streamWaiters.get(streamPath);
       if (waiters) {
         for (const resolve of waiters) resolve();
@@ -66,6 +78,7 @@ export class LocalRtmpServer {
       if (!streamPath) return;
       this.log.debug(`RTMP stream ended: ${streamPath}`);
       this.activeStreams.delete(streamPath);
+      this.publisherIps.delete(streamPath);
     });
 
     this.nms.run();
@@ -77,6 +90,14 @@ export class LocalRtmpServer {
 
   isStreamActive(streamKey: string): boolean {
     return this.activeStreams.has(`/live/${streamKey}`);
+  }
+
+  /**
+   * Returns the IP address of the RTMP publisher for the given stream key,
+   * or null if the stream is not active or the IP could not be determined.
+   */
+  getPublisherIp(streamKey: string): string | null {
+    return this.publisherIps.get(`/live/${streamKey}`) ?? null;
   }
 
   waitForStream(streamKey: string, timeoutMs = 15_000): Promise<boolean> {
@@ -131,6 +152,7 @@ export class LocalRtmpServer {
       this.nms = null;
     }
     this.activeStreams.clear();
+    this.publisherIps.clear();
     for (const waiters of this.streamWaiters.values()) {
       for (const resolve of waiters) resolve();
     }

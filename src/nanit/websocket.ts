@@ -56,6 +56,10 @@ export class NanitWebSocketClient {
     return { ...this.state };
   }
 
+  get cameraLocalIp(): string | undefined {
+    return this.localIp;
+  }
+
   onStateChange(listener: CameraStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
@@ -261,6 +265,7 @@ export class NanitWebSocketClient {
       }
     }
 
+
     if (response.sensorData) {
       this.processSensorData(response.sensorData as Array<Record<string, unknown>>);
     }
@@ -294,6 +299,7 @@ export class NanitWebSocketClient {
     if (type === 'PUT_CONTROL' && request.control) {
       this.processControl(request.control as Record<string, unknown>);
     }
+
   }
 
   private processSensorData(sensorData: Array<Record<string, unknown>>): void {
@@ -513,6 +519,7 @@ export class NanitWebSocketClient {
     }
     this.emitStateChange({ isStreaming: false });
   }
+
 
   async setNightLight(on: boolean): Promise<void> {
     await this.sendRequest('PUT_CONTROL', {

@@ -212,6 +212,21 @@ message GetStatus {
   optional bool all = 1;
 }
 
+message GetAudioStreaming {
+  optional bool all = 1;
+}
+
+message AudioStreaming {
+  required StreamIdentifier id = 1;
+  required Status status = 2;
+  required string rtmpUrl = 3;
+
+  enum Status {
+    STARTED = 0;
+    STOPPED = 1;
+  }
+}
+
 message Request {
   required int32 id = 1;
   required RequestType type = 2;
@@ -225,6 +240,23 @@ message Request {
   optional Playback playback = 16;
   optional GetLogs getLogs = 18;
   optional GetControl getControl = 19;
+  optional AudioStreaming audioStreaming = 20;
+  optional GetAudioStreaming getAudioStreaming = 21;
+}
+
+message AudioStreamingInfo {
+  optional string url = 1;
+  optional int32 port = 2;
+  optional string format = 3;
+  optional string codec = 4;
+  optional int32 sampleRate = 5;
+  optional int32 channels = 6;
+}
+
+message AudioStreamingResponse {
+  optional string rtmpUrl = 1;
+  optional int32 port = 2;
+  optional string format = 3;
 }
 
 message Response {

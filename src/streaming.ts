@@ -44,6 +44,8 @@ interface SessionInfo {
   audioCryptoSuite: number;
   audioSRTP: Buffer;
   audioSSRC: number;
+  /** Port HomeKit will send return audio (talk-back) to */
+  talkbackPort: number;
 }
 
 interface ActiveSession {
@@ -51,6 +53,7 @@ interface ActiveSession {
   returnProcess?: FfmpegProcess;
   timeout?: ReturnType<typeof setTimeout>;
   socket?: Socket;
+  stopAudio?: () => void;
 }
 
 export class NanitStreamingDelegate implements CameraStreamingDelegate {
@@ -208,6 +211,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       audioCryptoSuite: request.audio.srtpCryptoSuite,
       audioSRTP: Buffer.concat([request.audio.srtp_key, request.audio.srtp_salt]),
       audioSSRC,
+      talkbackPort: audioReturnPort,
     };
 
     const response: PrepareStreamResponse = {
@@ -370,15 +374,115 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   }
 
   private setupReturnAudio(
-    _request: StartStreamRequest,
-    _sessionInfo: SessionInfo,
-    _activeSession: ActiveSession,
+    request: StartStreamRequest,
+    sessionInfo: SessionInfo,
+    activeSession: ActiveSession,
   ): void {
-    // Two-way audio requires forwarding the HomeKit return audio stream
-    // to the camera, which is not yet supported by the Nanit WebSocket
-    // protocol. The microphone icon will still appear in HomeKit but
-    // audio sent from the Home app will be silently discarded.
-    this.log.debug(`[${this.cameraName}] Two-way audio return channel not yet implemented`);
+    const sampleRate = request.audio.sample_rate * 1000;
+
+    this.log.info(
+      `[${this.cameraName}] Talk-back audio params: codec=${request.audio.codec}` +
+      ` pt=${request.audio.pt} sr=${sampleRate} ch=${request.audio.channel}` +
+      ` bitrate=${request.audio.max_bit_rate}k cryptoSuite=${sessionInfo.audioCryptoSuite}` +
+      ` srtpKey=${sessionInfo.audioSRTP.toString('base64').slice(0, 8)}...` +
+      ` talkbackPort=${sessionInfo.talkbackPort}`,
+    );
+
+    // Prefer explicitly configured local IP, fall back to the IP the camera
+    // is currently publishing from (auto-detected from the RTMP session).
+    const cameraLocalIp =
+      this.wsClient.cameraLocalIp ??
+      this.streamResolver.getCameraPublisherIp(this.babyUid) ??
+      undefined;
+
+    if (!cameraLocalIp) {
+      this.log.warn(
+        `[${this.cameraName}] Camera local IP not known — talk-back audio requires local streaming. ` +
+        'Set "localIp" for this camera in the plugin config or use local/auto stream mode.',
+      );
+      return;
+    }
+
+    this.startTalkbackPipeline(request, sessionInfo, activeSession, sampleRate, cameraLocalIp);
+  }
+
+  private startTalkbackPipeline(
+    request: StartStreamRequest,
+    sessionInfo: SessionInfo,
+    activeSession: ActiveSession,
+    sampleRate: number,
+    cameraLocalIp: string,
+  ): void {
+    this.log.info(`[${this.cameraName}] Starting talk-back pipeline (HomeKit mic → camera RTSP)`);
+
+    // FFmpeg pipeline:
+    //  Input  : SRTP/RTP from HomeKit (AAC-ELD) on audioReturnPort, described via SDP on stdin
+    //  Output : PCM audio announced to the camera's RTSP back-channel on port 554
+    //
+    // The camera exposes an RTSP server on port 554. For talk-back we use RTSP ANNOUNCE
+    // (ffmpeg -f rtsp with rtsp_flags=+listen disabled, using the default output mode)
+    // to push audio to rtsp://<camera-ip>:554/talk.
+    //
+    // config=F8F0212C00BC00 is the AudioSpecificConfig for AAC-ELD 16kHz mono.
+    const ipVer = sessionInfo.ipv6 ? 'IP6' : 'IP4';
+    const aacEldConfig = 'F8F0212C00BC00';
+    const rtspTalkUrl = `rtsp://${cameraLocalIp}:554/talk`;
+
+    const returnFfmpegArgs: string[] = [
+      '-hide_banner',
+      '-loglevel', `level${this.debug ? '+verbose' : '+warning'}`,
+      '-protocol_whitelist', 'pipe,file,crypto,udp,rtp,srtp,tcp,rtsp',
+      '-c:a', 'libfdk_aac',
+      '-f', 'sdp',
+      '-i', 'pipe:0',
+      '-map', '0:a:0',
+      '-codec:a', 'pcm_s16le',
+      '-ar', `${sampleRate}`,
+      '-ac', '1',
+      '-f', 'rtsp',
+      '-rtsp_transport', 'tcp',
+      rtspTalkUrl,
+    ];
+
+    const returnProcess = new FfmpegProcess(
+      this.log, `${this.cameraName}/talkback`, this.videoProcessor, this.debug,
+    );
+    const proc = returnProcess.start(returnFfmpegArgs, (code) => {
+      if (code !== 0 && code !== null) {
+        this.log.warn(
+          `[${this.cameraName}] Talk-back pipeline exited (code ${code}). ` +
+          `Camera at ${cameraLocalIp} may not support RTSP ANNOUNCE on port 554.`,
+        );
+      } else {
+        this.log.debug(`[${this.cameraName}] Talk-back FFmpeg exited with code ${code}`);
+      }
+    });
+    activeSession.returnProcess = returnProcess;
+
+    const sdp = [
+      'v=0',
+      `o=- 0 0 IN ${ipVer} ${sessionInfo.address}`,
+      's=Nanit Talk-Back',
+      `c=IN ${ipVer} ${sessionInfo.address}`,
+      't=0 0',
+      `m=audio ${sessionInfo.talkbackPort} RTP/SAVP ${request.audio.pt}`,
+      `b=AS:${request.audio.max_bit_rate}`,
+      `a=rtpmap:${request.audio.pt} MPEG4-GENERIC/${sampleRate}/1`,
+      `a=fmtp:${request.audio.pt} profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3;config=${aacEldConfig}`,
+      `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:${sessionInfo.audioSRTP.toString('base64')}`,
+      '',
+    ].join('\r\n');
+
+    if (proc.stdin) {
+      this.log.debug(`[${this.cameraName}] Talk-back SDP:\n${sdp}`);
+      this.log.debug(`[${this.cameraName}] Talk-back RTSP target: ${rtspTalkUrl}`);
+      proc.stdin.write(sdp);
+      proc.stdin.end();
+    }
+
+    activeSession.stopAudio = () => {
+      returnProcess.stop();
+    };
   }
 
   private stopStream(sessionId: string): void {
@@ -388,6 +492,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       try { session.socket?.close(); } catch { /* ignore */ }
       try { session.mainProcess?.stop(); } catch { /* ignore */ }
       try { session.returnProcess?.stop(); } catch { /* ignore */ }
+      try { session.stopAudio?.(); } catch { /* ignore */ }
     }
     this.ongoingSessions.delete(sessionId);
 
