@@ -17,6 +17,8 @@ const IGNORED_IFACE_PREFIXES = [
 export class StreamResolver {
   private rtmpServer: LocalRtmpServer;
   private readonly configuredAddress?: string;
+  /** Serializes concurrent local stream negotiation to avoid competing stop/start sequences. */
+  private negotiationLock: Promise<StreamInfo> | null = null;
 
   constructor(
     private readonly log: Logging,
@@ -35,6 +37,11 @@ export class StreamResolver {
     }
   }
 
+  /** True when a local stream negotiation (stop/start/wait) is currently in progress. */
+  get isNegotiating(): boolean {
+    return this.negotiationLock !== null;
+  }
+
   async getStreamSource(
     babyUid: string,
     wsClient: NanitWebSocketClient,
@@ -44,19 +51,69 @@ export class StreamResolver {
     }
 
     if (this.mode === 'local') {
-      return this.getLocalStream(babyUid, wsClient);
+      return this.serializedGetLocalStream(babyUid, wsClient);
     }
 
     // auto mode: try local first, fall back to cloud
     if (wsClient.isConnected) {
       try {
-        return await this.getLocalStream(babyUid, wsClient);
+        return await this.serializedGetLocalStream(babyUid, wsClient);
       } catch (err) {
         this.log.warn('Local stream failed, falling back to cloud:', err);
       }
     }
 
     return this.getCloudStream(babyUid, wsClient);
+  }
+
+  /**
+   * Returns the play URL of an already-active local stream for `babyUid`,
+   * or null if no stream is currently publishing. Does NOT trigger any
+   * negotiation — safe to call from the prebuffer without risk of competing
+   * with an in-flight stop/start sequence.
+   */
+  getActiveStreamUrl(babyUid: string): string | null {
+    if (this.rtmpServer.isRunning && this.rtmpServer.isStreamActive(babyUid)) {
+      return this.rtmpServer.getLocalPlayUrl(babyUid);
+    }
+    return null;
+  }
+
+  private serializedGetLocalStream(
+    babyUid: string,
+    wsClient: NanitWebSocketClient,
+  ): Promise<StreamInfo> {
+    // If a negotiation is already in-flight for any stream, chain behind it
+    // so we never have two concurrent stop/start sequences.
+    const prev = this.negotiationLock ?? Promise.resolve(null);
+    const next = prev
+      .catch(() => null)
+      .then(() => this.getLocalStream(babyUid, wsClient));
+
+    this.negotiationLock = next;
+
+    // Clear the lock reference once this attempt settles so future independent
+    // calls start fresh. Use a separate .then/.catch to avoid creating an
+    // additional unhandled-rejection branch on `next` itself.
+    next.then(
+      () => { if (this.negotiationLock === next) this.negotiationLock = null; },
+      () => { if (this.negotiationLock === next) this.negotiationLock = null; },
+    );
+
+    return next;
+  }
+
+  /**
+   * Waits up to `timeoutMs` for a local RTMP stream for `babyUid` to become
+   * active. Returns the play URL on success, or null on timeout.
+   * Does NOT trigger any negotiation.
+   */
+  waitForActiveStream(babyUid: string, timeoutMs = 30_000): Promise<string | null> {
+    const playUrl = this.rtmpServer.getLocalPlayUrl(babyUid);
+
+    return this.rtmpServer.waitForStream(babyUid, timeoutMs).then(ready =>
+      ready ? playUrl : null,
+    );
   }
 
   private async getCloudStream(

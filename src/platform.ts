@@ -23,6 +23,7 @@ export class NanitPlatform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic;
 
   private readonly accessories = new Map<string, PlatformAccessory>();
+  private readonly cameraAccessories: NanitCameraAccessory[] = [];
   private readonly discoveredUUIDs: string[] = [];
 
   private readonly auth: AuthManager;
@@ -63,6 +64,9 @@ export class NanitPlatform implements DynamicPlatformPlugin {
     this.api.on('shutdown', () => {
       for (const ws of this.wsClients.values()) {
         ws.destroy();
+      }
+      for (const cam of this.cameraAccessories) {
+        cam.destroy();
       }
       this.streamResolver.shutdown();
     });
@@ -159,20 +163,20 @@ export class NanitPlatform implements DynamicPlatformPlugin {
       if (existingAccessory) {
         this.log.info('Restoring cached accessory:', existingAccessory.displayName);
         existingAccessory.context.cameraInfo = cameraInfo;
-        new NanitCameraAccessory(
+        this.cameraAccessories.push(new NanitCameraAccessory(
           this, existingAccessory, this.log, cameraInfo,
           wsClient, this.nanitApi, this.streamResolver, this.pluginConfig,
-        );
+        ));
       } else {
         this.log.info('Adding new accessory:', displayName);
         const accessory = new this.api.platformAccessory(displayName, uuid);
         accessory.category = this.api.hap.Categories.CAMERA;
         accessory.context.cameraInfo = cameraInfo;
 
-        new NanitCameraAccessory(
+        this.cameraAccessories.push(new NanitCameraAccessory(
           this, accessory, this.log, cameraInfo,
           wsClient, this.nanitApi, this.streamResolver, this.pluginConfig,
-        );
+        ));
 
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
