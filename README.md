@@ -7,7 +7,7 @@ Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 - **Live Video Streaming** — View your Nanit camera feed directly in the Apple Home app
 - **Three Streaming Modes** — Local (LAN), Cloud (Nanit servers), or Auto (local with cloud fallback)
 - **Two-Way Audio** — Listen to and talk through the camera
-- **Night Light Control** — Toggle the night light on/off from HomeKit
+- **Night Light Control** — Control the night light from HomeKit, including a brightness slider (0 % turns it off; 1–100 % turns it on)
 - **Sound Machine** — Start/stop sound playback from HomeKit
 - **Temperature Sensor** — Real-time room temperature in HomeKit
 - **Humidity Sensor** — Real-time room humidity in HomeKit
@@ -59,7 +59,7 @@ For local streaming, you may need to specify your camera's local IP address in t
 After configuration, restart Homebridge. Your Nanit cameras will appear in the Home app with:
 
 - Camera stream
-- Night light (Lightbulb accessory)
+- Night light (Lightbulb accessory with brightness slider)
 - Sound machine (Switch accessory)
 - Temperature sensor
 - Humidity sensor
@@ -182,7 +182,11 @@ In local mode, the plugin tells the camera (via WebSocket) to push its RTMP stre
 
 In cloud mode, FFmpeg reads the RTMPS stream directly from Nanit's media servers and transcodes to SRTP for HomeKit.
 
-## Troubleshooting
+### Night Light
+
+The Nanit camera protocol only supports binary on/off for the night light — there is no brightness channel on the wire. The plugin exposes a `Lightbulb` accessory with a `Brightness` characteristic so HomeKit shows a proper dimmer slider. Internally, setting brightness to 0 % turns the light off and any value from 1–100 % turns it on. The slider position is stored locally so it is restored when you turn the light back on.
+
+
 
 - **Camera not appearing**: Check the Homebridge logs for authentication errors. Re-run the setup wizard.
 - **Stream not loading**: Ensure FFmpeg is installed (`ffmpeg -version`). Try cloud mode if local isn't working.

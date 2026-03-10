@@ -235,6 +235,20 @@ export class NanitWebSocketClient {
 
       if (type === 'KEEPALIVE') return;
 
+      // Log raw hex for any message that carries Control data so unknown
+      // brightness fields can be discovered. Copy the hex and run:
+      //   node hack/decode-control.mjs <hex>
+      if (process.env.NANIT_DEBUG_PROTO) {
+        const hasControl =
+          (msg.response as Record<string, unknown> | undefined)?.control ||
+          (msg.request as Record<string, unknown> | undefined)?.control;
+        if (hasControl) {
+          this.log.info(
+            `[proto-debug] raw Control frame (hex): ${Buffer.from(data).toString('hex')}`,
+          );
+        }
+      }
+
       if (type === 'RESPONSE') {
         this.handleResponse(msg.response as Record<string, unknown>);
       }
