@@ -1,4 +1,4 @@
-# homebridge-nanit
+# homebridge-nanit-next
 
 Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 
@@ -24,7 +24,7 @@ Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 
 ### Via Homebridge UI (Recommended)
 
-Search for `homebridge-nanit` in the Homebridge UI plugin search and install.
+Search for `homebridge-nanit-next` in the Homebridge UI plugin search and install.
 
 ### Via CLI
 
