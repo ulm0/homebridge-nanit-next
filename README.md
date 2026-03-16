@@ -6,7 +6,7 @@ Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 
 - **Live Video Streaming** — View your Nanit camera feed directly in the Apple Home app
 - **Three Streaming Modes** — Local (LAN), Cloud (Nanit servers), or Auto (local with cloud fallback)
-- **Two-Way Audio** — Listen to and talk through the camera
+- **Two-Way Audio** — Listen to and talk through the camera. (Not supported yet, only listening is available at the moment)
 - **Night Light Control** — Toggle the night light on/off from HomeKit
 - **Sound Machine** — Start/stop sound playback from HomeKit
 - **Temperature Sensor** — Real-time room temperature in HomeKit
