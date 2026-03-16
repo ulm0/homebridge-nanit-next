@@ -1,8 +1,14 @@
 import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
-import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, chmod, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const NANIT_API_BASE = 'https://api.nanit.com';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MFA_CODE_RE = /^\d{4,8}$/;
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
 
 class NanitUiServer extends HomebridgePluginUiServer {
   constructor() {
@@ -17,7 +23,14 @@ class NanitUiServer extends HomebridgePluginUiServer {
   }
 
   async handleLogin(payload) {
-    const { email, password } = payload;
+    const { email, password } = payload ?? {};
+
+    if (!isNonEmptyString(email) || !EMAIL_RE.test(email)) {
+      return { success: false, error: 'A valid email address is required' };
+    }
+    if (!isNonEmptyString(password)) {
+      return { success: false, error: 'Password is required' };
+    }
 
     try {
       const response = await fetch(`${NANIT_API_BASE}/login`, {
@@ -56,7 +69,17 @@ class NanitUiServer extends HomebridgePluginUiServer {
   }
 
   async handleMfa(payload) {
-    const { email, password, mfaToken, mfaCode } = payload;
+    const { email, password, mfaToken, mfaCode } = payload ?? {};
+
+    if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+      return { success: false, error: 'Email and password are required' };
+    }
+    if (!isNonEmptyString(mfaToken)) {
+      return { success: false, error: 'MFA token is missing' };
+    }
+    if (!isNonEmptyString(mfaCode) || !MFA_CODE_RE.test(mfaCode.trim())) {
+      return { success: false, error: 'A valid numeric verification code is required' };
+    }
 
     try {
       const response = await fetch(`${NANIT_API_BASE}/login`, {
@@ -141,7 +164,8 @@ class NanitUiServer extends HomebridgePluginUiServer {
       accessToken,
       refreshToken,
       authTime: Date.now(),
-    }, null, 2), 'utf-8');
+    }, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    await chmod(tokenPath, 0o600);
   }
 }
 

@@ -9,11 +9,17 @@ export class LocalRtmpServer {
   private streamWaiters = new Map<string, Array<() => void>>();
   /** Maps stream path → publisher IP (extracted from the RTMP session remote address) */
   private publisherIps = new Map<string, string>();
+  private readonly allowedIps = new Set<string>(['127.0.0.1', '::1']);
 
   constructor(
     private readonly log: Logging,
     private readonly preferredPort?: number,
   ) {}
+
+  /** Register an IP address that is allowed to publish RTMP streams. */
+  addAllowedIp(ip: string): void {
+    this.allowedIps.add(ip);
+  }
 
   get port(): number {
     return this._port;
@@ -49,6 +55,21 @@ export class LocalRtmpServer {
       const session = args[0] as Record<string, unknown>;
       const streamPath = (typeof session?.streamPath === 'string' ? session.streamPath : args[1]) as string;
       if (!streamPath) return;
+
+      // Extract the publisher's IP for allowlist check
+      const socket = session?.socket as Record<string, unknown> | undefined;
+      const remoteAddress = socket?.remoteAddress as string | undefined;
+      const ip = remoteAddress?.replace(/^::ffff:/, '') ?? '';
+
+      if (ip && !this.allowedIps.has(ip)) {
+        this.log.warn(`RTMP publish rejected from unauthorized IP: ${ip} (stream: ${streamPath})`);
+        const destroy = (socket as Record<string, unknown> | undefined)?.destroy;
+        if (typeof destroy === 'function') {
+          (destroy as () => void).call(socket);
+        }
+        return;
+      }
+
       if (this.activeStreams.has(streamPath)) {
         this.log.debug(`RTMP stream already tracked, ignoring duplicate prePublish: ${streamPath}`);
         return;
@@ -56,12 +77,7 @@ export class LocalRtmpServer {
       this.log.debug(`RTMP stream publishing: ${streamPath}`);
       this.activeStreams.add(streamPath);
 
-      // Extract and store the publisher's IP so callers can discover the camera's address
-      const socket = session?.socket as Record<string, unknown> | undefined;
-      const remoteAddress = socket?.remoteAddress as string | undefined;
-      if (remoteAddress) {
-        // Strip IPv4-mapped IPv6 prefix (::ffff:x.x.x.x → x.x.x.x)
-        const ip = remoteAddress.replace(/^::ffff:/, '');
+      if (ip) {
         this.publisherIps.set(streamPath, ip);
       }
 

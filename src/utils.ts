@@ -13,7 +13,11 @@ export class FfmpegProcess {
   ) {}
 
   start(args: string[], onClose?: (code: number | null) => void): ChildProcess {
-    const redacted = args.map((a, i) => (args[i - 1] === '-srtp_out_params' ? '<redacted>' : a));
+    const redacted = args.map((a, i) => {
+      if (args[i - 1] === '-srtp_out_params') return '<redacted>';
+      if (args[i - 1] === '-i' && /^rtmps?:\/\//.test(a)) return a.replace(/(\.\w{8})\w+$/, '$1...<redacted>');
+      return a;
+    });
     this.log.debug(`[${this.name}] ffmpeg ${redacted.join(' ')}`);
 
     this.process = spawn(this.videoProcessor, args, {

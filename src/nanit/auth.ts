@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, chmod, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logging } from 'homebridge';
 import { NANIT_API_BASE, NANIT_API_VERSION, AUTH_TOKEN_LIFETIME_MS } from '../settings.js';
@@ -167,7 +167,8 @@ export class AuthManager {
   private async saveTokens(): Promise<void> {
     try {
       await mkdir(this.storagePath, { recursive: true });
-      await writeFile(this.tokenFilePath, JSON.stringify(this.tokens, null, 2), 'utf-8');
+      await writeFile(this.tokenFilePath, JSON.stringify(this.tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
+      await chmod(this.tokenFilePath, 0o600);
     } catch (err) {
       this.log.error('Failed to save Nanit tokens:', err);
     }

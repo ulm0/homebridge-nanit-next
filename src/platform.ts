@@ -138,6 +138,10 @@ export class NanitPlatform implements DynamicPlatformPlugin {
         localIp,
       };
 
+      if (localIp) {
+        this.streamResolver.addAllowedCameraIp(localIp);
+      }
+
       const uuid = this.api.hap.uuid.generate(baby.camera_uid);
       this.discoveredUUIDs.push(uuid);
 

@@ -228,7 +228,7 @@
     function confirmDisconnect() {
       document.getElementById('disconnect-confirm').style.display = 'block';
       document.getElementById('btn-disconnect').style.display = 'none';
-      document.getElementById('disconnect-error').innerHTML = '';
+      document.getElementById('disconnect-error').textContent = '';
     }
 
     function cancelDisconnect() {
@@ -237,7 +237,7 @@
       if (confirm) confirm.style.display = 'none';
       if (btn) btn.style.display = '';
       const err = document.getElementById('disconnect-error');
-      if (err) err.innerHTML = '';
+      if (err) err.textContent = '';
     }
 
     async function doDisconnect() {
@@ -249,8 +249,7 @@
       try {
         const result = await homebridge.request('/auth/disconnect');
         if (!result.success) {
-          document.getElementById('disconnect-error').innerHTML =
-            `<div class="alert alert-error">${result.error || 'Failed to disconnect'}</div>`;
+          showError('disconnect-error', result.error || 'Failed to disconnect');
           return;
         }
         // Reset UI to login state
@@ -258,8 +257,7 @@
           '<span class="status-badge status-disconnected">Not connected</span>';
         showStep('step-login');
       } catch (err) {
-        document.getElementById('disconnect-error').innerHTML =
-          `<div class="alert alert-error">${err.message || 'Connection error'}</div>`;
+        showError('disconnect-error', err.message || 'Connection error');
       } finally {
         btn.disabled = false;
         btn.textContent = btn.dataset.originalText || 'Yes, disconnect';
@@ -267,12 +265,16 @@
     }
 
     function showError(containerId, message) {
-      document.getElementById(containerId).innerHTML =
-        `<div class="alert alert-error">${message}</div>`;
+      const container = document.getElementById(containerId);
+      container.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-error';
+      div.textContent = message;
+      container.appendChild(div);
     }
 
     function clearError(containerId) {
-      document.getElementById(containerId).innerHTML = '';
+      document.getElementById(containerId).textContent = '';
     }
 
     function setLoading(btnId, loading) {
@@ -285,6 +287,12 @@
         btn.disabled = false;
         btn.textContent = btn.dataset.originalText || 'Submit';
       }
+    }
+
+    function clearSavedCredentials() {
+      savedEmail = '';
+      savedPassword = '';
+      mfaToken = '';
     }
 
     async function doLogin() {
@@ -317,6 +325,7 @@
           showStep('step-mfa');
           document.getElementById('mfa-code').focus();
         } else {
+          clearSavedCredentials();
           await saveRefreshTokenToConfig(result.refreshToken);
           showStep('step-success');
           checkStatus();
@@ -353,6 +362,7 @@
         }
 
         await saveRefreshTokenToConfig(result.refreshToken);
+        clearSavedCredentials();
         showStep('step-success');
         checkStatus();
       } catch (err) {

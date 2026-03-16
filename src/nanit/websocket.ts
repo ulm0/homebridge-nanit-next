@@ -166,6 +166,10 @@ export class NanitWebSocketClient {
 
     const url = `wss://${this.localIp}:${NANIT_LOCAL_WS_PORT}`;
     this.log.info(`Connecting to Nanit local WebSocket at ${url}...`);
+    this.log.warn(
+      'Local WebSocket uses rejectUnauthorized=false (camera uses a self-signed certificate). '
+      + 'This disables TLS verification and is susceptible to MITM attacks on the local network.',
+    );
 
     return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {

@@ -193,6 +193,15 @@ In cloud mode, FFmpeg reads the RTMPS stream directly from Nanit's media servers
 
 This plugin uses reverse-engineered Nanit APIs. It is not affiliated with or endorsed by Nanit. Use at your own risk.
 
+## Security Considerations
+
+Because this plugin handles baby monitor cameras, security is particularly important. Please be aware of the following:
+
+- **Local WebSocket TLS**: When connecting to the camera over your local network, TLS certificate verification is disabled (`rejectUnauthorized: false`) because Nanit cameras use self-signed certificates. This means the connection is encrypted but not authenticated — an attacker on your LAN could potentially perform a Man-in-the-Middle attack. Keep your home network secured with a strong Wi-Fi password.
+- **Local RTMP server**: In `local` or `auto` streaming mode, the plugin runs an RTMP server that the camera pushes video to. The server validates publisher IPs against known camera addresses. For best security, set the `localIp` for each camera in the configuration.
+- **Token storage**: Authentication tokens are stored on disk in the Homebridge storage directory with restricted file permissions (`0600`). Ensure your Homebridge host has appropriate access controls.
+- **Reporting vulnerabilities**: See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
+
 ## License
 
 MIT

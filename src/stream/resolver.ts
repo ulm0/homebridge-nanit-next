@@ -37,6 +37,11 @@ export class StreamResolver {
     }
   }
 
+  /** Register a camera IP that is allowed to publish to the local RTMP server. */
+  addAllowedCameraIp(ip: string): void {
+    this.rtmpServer.addAllowedIp(ip);
+  }
+
   /** True when a local stream negotiation (stop/start/wait) is currently in progress. */
   get isNegotiating(): boolean {
     return this.negotiationLock !== null;
