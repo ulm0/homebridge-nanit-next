@@ -2,13 +2,13 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in `homebridge-nanit`, please report it responsibly.
+If you discover a security vulnerability in `homebridge-nanit-next`, please report it responsibly.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
 Instead, please report vulnerabilities via one of the following:
 
-- **GitHub Security Advisories**: Use the [Report a vulnerability](https://github.com/ulm0/homebridge-nanit/security/advisories/new) feature on GitHub.
+- **GitHub Security Advisories**: Use the [Report a vulnerability](https://github.com/ulm0/homebridge-nanit-next/security/advisories/new) feature on GitHub.
 - **Email**: Contact the maintainer directly at the email listed in the npm package or GitHub profile.
 
 ### What to include

@@ -1,7 +1,7 @@
 import type { CameraRecordingOptions } from 'homebridge';
 
 export const PLATFORM_NAME = 'NanitCamera';
-export const PLUGIN_NAME = 'homebridge-nanit';
+export const PLUGIN_NAME = 'homebridge-nanit-next';
 
 export const NANIT_API_BASE = 'https://api.nanit.com';
 export const NANIT_API_VERSION = '1';

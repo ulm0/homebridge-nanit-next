@@ -4,7 +4,7 @@
   "singular": true,
   "customUi": true,
   "headerDisplay": "Authenticate with your Nanit account using the setup wizard above, then restart Homebridge.",
-  "footerDisplay": "For help, see the [README](https://github.com/ulm0/homebridge-nanit#readme).",
+  "footerDisplay": "For help, see the [README](https://github.com/ulm0/homebridge-nanit-next#readme).",
   "schema": {
     "type": "object",
     "properties": {

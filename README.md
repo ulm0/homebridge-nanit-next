@@ -162,7 +162,7 @@ npm run build
 npm link
 
 # In your Homebridge config directory:
-npm link homebridge-nanit
+npm link homebridge-nanit-next
 ```
 
 ## How It Works
