@@ -1,5 +1,5 @@
 {
-  "name": "homebridge-nanit",
+  "name": "@ulm0/homebridge-nanit",
   "displayName": "Nanit for Homebridge",
   "type": "module",
   "version": "1.0.0",
