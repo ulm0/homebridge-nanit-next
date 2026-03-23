@@ -162,7 +162,13 @@ export class StreamResolver {
       let ready = false;
       for (let attempt = 1; attempt <= StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS; attempt++) {
         this.log.debug(`Requesting camera to publish locally (attempt ${attempt}/${StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS})...`);
-        await wsClient.startStreaming(rtmpUrl);
+        try {
+          await wsClient.startStreaming(rtmpUrl);
+        } catch (err) {
+          // Some cameras start publishing even when the command response times out.
+          // Continue and wait for the RTMP stream before deciding this attempt failed.
+          this.log.warn(`Local startStreaming signal did not confirm on time (attempt ${attempt}/${StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS}):`, err);
+        }
 
         ready = await this.rtmpServer.waitForStream(streamKey, StreamResolver.LOCAL_STREAM_WAIT_MS);
         if (ready) {

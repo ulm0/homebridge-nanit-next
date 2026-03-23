@@ -62,12 +62,20 @@ export class LocalRtmpServer {
       const ip = remoteAddress?.replace(/^::ffff:/, '') ?? '';
 
       if (ip && !this.allowedIps.has(ip)) {
-        this.log.warn(`RTMP publish rejected from unauthorized IP: ${ip} (stream: ${streamPath})`);
-        const destroy = (socket as Record<string, unknown> | undefined)?.destroy;
-        if (typeof destroy === 'function') {
-          (destroy as () => void).call(socket);
+        // Backward-compatible fallback: if no camera IPs were configured yet,
+        // trust and learn the first publisher IP. This avoids breaking existing
+        // setups that rely on auto-discovery.
+        if (this.allowedIps.size <= 2) {
+          this.allowedIps.add(ip);
+          this.log.warn(`RTMP publisher IP auto-allowed: ${ip}. Set camera localIp in config for stricter security.`);
+        } else {
+          this.log.warn(`RTMP publish rejected from unauthorized IP: ${ip} (stream: ${streamPath})`);
+          const destroy = (socket as Record<string, unknown> | undefined)?.destroy;
+          if (typeof destroy === 'function') {
+            (destroy as () => void).call(socket);
+          }
+          return;
         }
-        return;
       }
 
       if (this.activeStreams.has(streamPath)) {

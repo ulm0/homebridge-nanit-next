@@ -504,7 +504,7 @@ export class NanitWebSocketClient {
         status: 'STARTED',
         rtmpUrl,
       },
-    });
+    }, 20_000);
     this.emitStateChange({ isStreaming: true });
   }
 
