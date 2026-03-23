@@ -2,7 +2,7 @@
   "name": "homebridge-nanit-next",
   "displayName": "Nanit for Homebridge",
   "type": "module",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Homebridge plugin for Nanit baby cameras with native HomeKit integration: live streaming (local/cloud/auto), two-way audio (not supported yet, only listening is available at the moment), night light, sound machine, and sensors.",
   "author": "ulm0",
   "license": "MIT",
