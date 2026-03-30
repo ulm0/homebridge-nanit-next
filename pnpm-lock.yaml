@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@homebridge/plugin-ui-utils':
         specifier: ^2.2.1
-        version: 2.2.2
+        version: 2.2.3
       node-media-server:
         specifier: ^4.2.4
         version: 4.2.4
@@ -53,8 +53,8 @@ packages:
     resolution: {integrity: sha512-21RywQjjJPssTNdz9gZtKquShzlIz8hDQ1SGAYmOWdoRwSsi+znCt10LAjDSXB8AVVMwothTm0KQx2KJSBhLAg==}
     hasBin: true
 
-  '@homebridge/plugin-ui-utils@2.2.2':
-    resolution: {integrity: sha512-qXHK3DLBE1/CC5ATxM1w7XJikUfg3cUReU3hcOGhNpelgsYlgJUp303NFZQnvOw6t5/shKm7DvD4Xb8pEPdj2Q==}
+  '@homebridge/plugin-ui-utils@2.2.3':
+    resolution: {integrity: sha512-kKieIJM1Wyv4TzzE/amUKwR4UnlDH6Th52axG2e5ncH4iA5w+HNfPDAqX1nitdhyHtHqNlTK6DdeE71QzO5LNQ==}
 
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
@@ -771,7 +771,7 @@ snapshots:
       safe-buffer: 5.2.1
       xml2js: 0.6.2
 
-  '@homebridge/plugin-ui-utils@2.2.2': {}
+  '@homebridge/plugin-ui-utils@2.2.3': {}
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
