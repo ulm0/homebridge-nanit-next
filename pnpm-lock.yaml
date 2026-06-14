@@ -19,7 +19,7 @@ importers:
         version: 2.2.0
       protobufjs:
         specifier: ^8.0.0
-        version: 8.2.0
+        version: 8.6.3
       ws:
         specifier: ^8.19.0
         version: 8.21.0
@@ -531,8 +531,8 @@ packages:
     resolution: {integrity: sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==}
     engines: {node: '>=8.6'}
 
-  protobufjs@8.2.0:
-    resolution: {integrity: sha512-oI+GC9iPxrQEr6wragljFKH46/r3rNsm6eg7F2fp6kBUMnf6/mesDRdBuF4gK+OyaKJ8N4C1B9s9cCeYdqFikg==}
+  protobufjs@8.6.3:
+    resolution: {integrity: sha512-alQyzT0j401LGBtwsqu6uprjR6pfNH1UJf9N6GBFMjIcd+HzTe0/HrjAbFCqun+zvnfLarrxAtMM2xvZ+kFZ5A==}
     engines: {node: '>=12.0.0'}
 
   proxy-addr@2.0.7:
@@ -1261,9 +1261,8 @@ snapshots:
 
   picomatch@2.3.1: {}
 
-  protobufjs@8.2.0:
+  protobufjs@8.6.3:
     dependencies:
-      '@types/node': 25.9.1
       long: 5.3.2
 
   proxy-addr@2.0.7:
