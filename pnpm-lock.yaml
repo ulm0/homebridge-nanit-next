@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@homebridge/plugin-ui-utils':
         specifier: ^2.2.1
-        version: 2.2.2
+        version: 2.2.4
       node-media-server:
         specifier: ^4.2.4
         version: 4.2.4
@@ -57,8 +57,8 @@ packages:
     resolution: {integrity: sha512-0SiNVc0OCkFN0figsOg7fWcEe/3OLF58sUyE8kzrQ+BoINkSEHz824xzKHep/yOT7SJtd2FREbFsQklkF/Kn2g==}
     engines: {node: ^22 || ^24}
 
-  '@homebridge/plugin-ui-utils@2.2.2':
-    resolution: {integrity: sha512-qXHK3DLBE1/CC5ATxM1w7XJikUfg3cUReU3hcOGhNpelgsYlgJUp303NFZQnvOw6t5/shKm7DvD4Xb8pEPdj2Q==}
+  '@homebridge/plugin-ui-utils@2.2.4':
+    resolution: {integrity: sha512-tZDoLehOfgdzhu9EjfcRD/P/pAvIds4DRTYDO7lESta1sRNHCJbh4ZleJz3fsFymNoO+zgwBo6rOa9G4fJdObw==}
 
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
@@ -777,7 +777,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@homebridge/plugin-ui-utils@2.2.2': {}
+  '@homebridge/plugin-ui-utils@2.2.4': {}
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
