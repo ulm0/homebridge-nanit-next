@@ -209,6 +209,7 @@ export class NanitPlatform implements DynamicPlatformPlugin {
         this.nanitApi,
         baby.camera_uid,
         localIp,
+        this.pluginConfig.debug?.probe ?? false,
       );
       this.wsClients.set(baby.camera_uid, wsClient);
       this.wsClientsByBabyUid.set(baby.uid, wsClient);

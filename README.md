@@ -6,12 +6,24 @@ Homebridge plugin for Nanit baby cameras with native Apple HomeKit integration.
 
 - **Live Video Streaming** — View your Nanit camera feed directly in the Apple Home app
 - **Three Streaming Modes** — Local (LAN), Cloud (Nanit servers), or Auto (local with cloud fallback)
-- **Two-Way Audio** — Listen to and talk through the camera. (Not supported yet, only listening is available at the moment)
-- **Night Light Control** — Toggle the night light on/off from HomeKit
-- **Sound Machine** — Start/stop sound playback from HomeKit
-- **Temperature Sensor** — Real-time room temperature in HomeKit
-- **Humidity Sensor** — Real-time room humidity in HomeKit
+- **Camera Audio Listen-In** — Listen to room audio through the HomeKit camera view
+- **Night Light** — On/off plus brightness slider (0–100)
+- **Sound Machine** — On/off plus camera speaker volume slider
+- **Sound Track Selection** — Individual switches for the 4 built-in tracks (Birds, Waves, White Noise, Wind)
+- **Night Vision** — Force IR on/off (auto mode remains the default in the Nanit app)
+- **Sleep Mode** — Toggle the camera's sleep mode
+- **Status Light** — Toggle the front status LED
+- **Camera Microphone** — Mute/unmute the camera's microphone (affects HomeKit and the Nanit app)
+- **Temperature Sensor** — Real-time room temperature
+- **Humidity Sensor** — Real-time room humidity
+- **HomeKit Secure Video (HKSV)** — Optional motion-triggered cloud recording (experimental)
 - **Easy Setup** — Built-in authentication wizard with MFA support in the Homebridge UI
+
+### Two-way talk
+
+Two-way talk is **not supported on Nanit Pro (Gen 2/3) firmware**. The camera's RTSP server only advertises read methods (`PLAY`, `DESCRIBE`, etc.) and rejects audio push. The Nanit iOS app routes talk-back through Nanit's cloud over an HTTPS channel that requires app-only credentials we cannot obtain without intercepting iOS app traffic.
+
+A legacy RTSP-ANNOUNCE talk-back path exists for Gen 1 cameras and can be opted into via `enableTalkback: true`. Leave off otherwise — it will only generate harmless errors in the log on Pro firmware.
 
 ## Requirements
 
@@ -58,11 +70,18 @@ For local streaming, you may need to specify your camera's local IP address in t
 
 After configuration, restart Homebridge. Your Nanit cameras will appear in the Home app with:
 
-- Camera stream
-- Night light (Lightbulb accessory)
-- Sound machine (Switch accessory)
-- Temperature sensor
-- Humidity sensor
+- Camera stream (Camera accessory)
+- Night Light — Lightbulb (on/off + brightness)
+- Sound Machine — Lightbulb (on/off + volume slider)
+- Sound: Birds / Waves / White Noise / Wind — Switches (track selection)
+- Night Vision — Switch
+- Sleep Mode — Switch
+- Status Light — Switch
+- Camera Microphone — Switch (on = mic active, off = camera mic muted)
+- Temperature Sensor
+- Humidity Sensor
+
+Each subservice can be individually disabled in the per-camera config.
 
 ## Configuration
 
@@ -101,7 +120,12 @@ Authentication is handled via the UI wizard. No credentials need to be in the co
           "localIp": "192.168.1.100",
           "enableLight": true,
           "enableSound": true,
-          "enableSensors": true
+          "enableSoundTracks": true,
+          "enableSensors": true,
+          "enableNightVision": true,
+          "enableSleepMode": true,
+          "enableStatusLight": true,
+          "enableMicMute": true
         }
       ],
       "videoConfig": {
@@ -125,6 +149,9 @@ Authentication is handled via the UI wizard. No credentials need to be in the co
 | `name` | string | `Nanit Camera` | Platform display name |
 | `streamMode` | string | `auto` | `auto`, `local`, or `cloud` |
 | `rtmpListenPort` | number | auto | Port for local RTMP server |
+| `localAddress` | string | auto | Homebridge host LAN IP (only required if auto-detect picks the wrong NIC) |
+| `enableHksv` | boolean | `false` | Enable HomeKit Secure Video (experimental) |
+| `enableTalkback` | boolean | `false` | Enable legacy RTSP ANNOUNCE talk-back. Pro firmware unsupported — leave off |
 | `auth.refreshToken` | string | — | Manual refresh token (alternative to UI wizard) |
 
 #### Per-Camera Options (`cameras[]`)
@@ -133,10 +160,15 @@ Authentication is handled via the UI wizard. No credentials need to be in the co
 |--------|------|---------|-------------|
 | `babyUid` | string | auto | Nanit baby UID |
 | `name` | string | auto | Custom display name |
-| `localIp` | string | — | Camera's LAN IP address |
-| `enableLight` | boolean | `true` | Expose night light control |
-| `enableSound` | boolean | `true` | Expose sound machine control |
-| `enableSensors` | boolean | `true` | Expose temperature/humidity sensors |
+| `localIp` | string | auto | Camera's LAN IP (auto-discovered from cloud if available) |
+| `enableLight` | boolean | `true` | Night Light (on/off + brightness) |
+| `enableSound` | boolean | `true` | Sound Machine (on/off + volume) |
+| `enableSoundTracks` | boolean | `true` | Add 4 individual track switches (Birds/Waves/White Noise/Wind) |
+| `enableSensors` | boolean | `true` | Temperature and humidity sensors |
+| `enableNightVision` | boolean | `true` | Night vision force on/off switch |
+| `enableSleepMode` | boolean | `true` | Sleep mode switch |
+| `enableStatusLight` | boolean | `true` | Front status LED switch |
+| `enableMicMute` | boolean | `true` | Camera microphone enable/disable switch |
 
 #### Video Options (`videoConfig`)
 

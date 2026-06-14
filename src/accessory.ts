@@ -10,6 +10,8 @@ import { NanitStreamingDelegate } from './streaming.js';
 import { NightLightService } from './services/light.js';
 import { SoundMachineService } from './services/sound.js';
 import { SensorServices } from './services/sensors.js';
+import { CameraToggleServices } from './services/extras.js';
+import { SoundTrackServices } from './services/soundtracks.js';
 import { NanitPrebuffer } from './prebuffer.js';
 import { NanitRecordingDelegate } from './recording.js';
 
@@ -17,7 +19,9 @@ export class NanitCameraAccessory {
   private streamingDelegate: NanitStreamingDelegate;
   private nightLightService?: NightLightService;
   private soundMachineService?: SoundMachineService;
+  private soundTrackServices?: SoundTrackServices;
   private sensorServices?: SensorServices;
+  private cameraToggles?: CameraToggleServices;
   private prebuffer?: NanitPrebuffer;
   private recordingDelegate?: NanitRecordingDelegate;
 
@@ -112,11 +116,28 @@ export class NanitCameraAccessory {
 
     if (enableSound) {
       this.soundMachineService = new SoundMachineService(this, log, wsClient);
+      const enableTrackSwitches = cameraConfig?.enableSoundTracks ?? true;
+      if (enableTrackSwitches) {
+        this.soundTrackServices = new SoundTrackServices(this, log, wsClient);
+      }
+    } else {
+      // If sound disabled, also strip any cached track switches
+      for (const name of ['Sound: Birds', 'Sound: Waves', 'Sound: White Noise', 'Sound: Wind']) {
+        const stale = accessory.getService(name);
+        if (stale) accessory.removeService(stale);
+      }
     }
 
     if (enableSensors) {
       this.sensorServices = new SensorServices(this, log, wsClient);
     }
+
+    this.cameraToggles = new CameraToggleServices(this, log, wsClient, {
+      nightVision: cameraConfig?.enableNightVision ?? true,
+      sleepMode: cameraConfig?.enableSleepMode ?? true,
+      statusLight: cameraConfig?.enableStatusLight ?? true,
+      micMute: cameraConfig?.enableMicMute ?? true,
+    });
 
     wsClient.onStateChange((state) => {
       if (state.firmwareVersion) {

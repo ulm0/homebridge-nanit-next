@@ -107,7 +107,17 @@ message Control {
 }
 
 message Settings {
-  optional bool nightVision = 2;
+  // Three-state enum: 0=OFF, 1=AUTO, 2=ON. Earlier proto declared this as
+  // bool, which silently coerced AUTO/ON to "true" and made the field
+  // appear non-functional from clients. Reverse-engineered via Phase 2
+  // iOS app captures.
+  optional NightVision nightVision = 2;
+
+  enum NightVision {
+    NV_OFF = 0;
+    NV_AUTO = 1;
+    NV_ON = 2;
+  }
   repeated SensorSettings sensors = 7;
   repeated StreamSettings streams = 8;
   optional int32 volume = 9;
@@ -117,6 +127,10 @@ message Settings {
   optional int32 mountingMode = 15;
   optional WifiBand wifiBand = 18;
   optional bool micMuteOn = 20;
+  // Field 24 discovered via reverse engineering (Phase 2): camera emits
+  // delta PUT_SETTINGS with only field 24 set when night-light brightness
+  // changes via the iOS app. Range observed: 0-100.
+  optional int32 nightLightBrightness = 24;
 
   message SensorSettings {
     required SensorType sensorType = 1;
@@ -166,11 +180,21 @@ message Status {
 }
 
 message Playback {
-  required Status status = 1;
+  optional Status status = 1;
+  // Field 2: large uint64 sentinel (max uint64) observed when track plays
+  // continuously. Likely "loop forever" or session id. Reverse-engineered.
+  optional uint64 sessionId = 2;
+  optional Track track = 3;
 
   enum Status {
     STARTED = 0;
     STOPPED = 1;
+  }
+
+  message Track {
+    // Field 1: integer flag (0 observed). Possibly track-type/volume modifier.
+    optional int32 mode = 1;
+    optional string filename = 2;
   }
 }
 
@@ -188,9 +212,9 @@ message Stream {
 }
 
 message Streaming {
-  required StreamIdentifier id = 1;
-  required Status status = 2;
-  required string rtmpUrl = 3;
+  optional StreamIdentifier id = 1;
+  optional Status status = 2;
+  optional string rtmpUrl = 3;
   optional int32 attempts = 4;
 
   enum Status {
@@ -217,9 +241,9 @@ message GetAudioStreaming {
 }
 
 message AudioStreaming {
-  required StreamIdentifier id = 1;
-  required Status status = 2;
-  required string rtmpUrl = 3;
+  optional StreamIdentifier id = 1;
+  optional Status status = 2;
+  optional string rtmpUrl = 3;
 
   enum Status {
     STARTED = 0;

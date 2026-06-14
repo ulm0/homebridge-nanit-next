@@ -1,6 +1,7 @@
+*.tgz
+.DS_Store
+.claude/
+.env
+.homebridge/
 dist/
 node_modules/
-.homebridge/
-.DS_Store
-*.tgz
-.env

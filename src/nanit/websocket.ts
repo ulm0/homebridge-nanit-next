@@ -49,6 +49,7 @@ export class NanitWebSocketClient {
     private readonly api: NanitApiClient,
     private readonly cameraUid: string,
     private localIp?: string,
+    private readonly debugProbe = false,
   ) {}
 
   get isConnected(): boolean {
@@ -166,6 +167,7 @@ export class NanitWebSocketClient {
 
       this.ws.on('open', () => {
         clearTimeout(timeout);
+        this.applyTcpKeepalive();
         this.onConnected();
         resolve();
       });
@@ -223,6 +225,7 @@ export class NanitWebSocketClient {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        this.applyTcpKeepalive();
         this.onConnected();
         resolve();
       });
@@ -251,6 +254,16 @@ export class NanitWebSocketClient {
     });
   }
 
+  private applyTcpKeepalive(): void {
+    const sock = (this.ws as unknown as { _socket?: { setKeepAlive?: (enable: boolean, ms: number) => void; setNoDelay?: (n: boolean) => void } })._socket;
+    try {
+      sock?.setKeepAlive?.(true, 5_000);
+      sock?.setNoDelay?.(true);
+    } catch (err) {
+      this.log.debug('Failed to apply TCP keepalive:', err);
+    }
+  }
+
   private onConnected(): void {
     this._isConnected = true;
     this.connectedAtMs = Date.now();
@@ -261,7 +274,19 @@ export class NanitWebSocketClient {
     this.log.info(`Nanit WebSocket connected (${this.connectionMode})`);
     this.emitStateChange({ isConnected: true });
     this.startKeepalive();
-    this.requestInitialState();
+    this.requestInitialState().then(() => {
+      if (this.debugProbe && this.connectionMode === 'cloud') {
+        setTimeout(() => {
+          if (this._isConnected) {
+            this.runProbeSweep().catch(err => this.log.debug('[probe] sweep error:', err));
+          } else {
+            this.log.info('[probe] skipping sweep — WS no longer connected');
+          }
+        }, 2_000);
+      } else if (this.debugProbe) {
+        this.log.info('[probe] skipping sweep on local WS — local channel drops too fast; cloud-only');
+      }
+    });
   }
 
   private onDisconnected(code: number, reason: string): void {
@@ -269,11 +294,12 @@ export class NanitWebSocketClient {
     if (this.connectionMode === 'local' && code === 1006 && connectedForMs > 0 && connectedForMs < 5_000) {
       this.localRapidDisconnects++;
       if (this.localRapidDisconnects >= 3) {
-        this.preferCloudUntilMs = Date.now() + 10 * 60_000;
+        // Session-lifetime preference. Local WS is unusable for sustained
+        // control on this firmware; resets only on plugin restart.
+        this.preferCloudUntilMs = Number.POSITIVE_INFINITY;
         this.connectionMode = 'cloud';
         this.log.warn(
-          'Local WebSocket disconnected rapidly multiple times; '
-          + 'switching to cloud WebSocket control for 10 minutes.',
+          'Local WebSocket drops repeatedly; using cloud WebSocket for the rest of this session.',
         );
       }
     } else if (this.connectionMode === 'local' && code !== 1006) {
@@ -301,6 +327,10 @@ export class NanitWebSocketClient {
       const msg = decodeMessage(data);
       const type = msg.type as string;
 
+      if (this.debugProbe && type !== 'KEEPALIVE') {
+        this.logFrame('IN', data, msg);
+      }
+
       if (type === 'KEEPALIVE') return;
 
       if (type === 'RESPONSE') {
@@ -313,6 +343,68 @@ export class NanitWebSocketClient {
     } catch (err) {
       this.log.error('Failed to decode WebSocket message:', err);
     }
+  }
+
+  private logFrame(direction: 'IN' | 'OUT', data: Uint8Array, decoded: Record<string, unknown>): void {
+    const hex = Buffer.from(data).toString('hex');
+    const redacted = this.redactForLog(decoded);
+    this.log.info(
+      `[probe ${direction}] (${data.length}B) ${JSON.stringify(redacted)} | hex=${hex}`,
+    );
+  }
+
+  private redactForLog(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(v => this.redactForLog(v));
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (k === 'rtmpUrl' && typeof v === 'string') {
+          out[k] = v.replace(/(\.\w{8})\w+$/, '$1...<redacted>');
+        } else if (/token|secret|key/i.test(k) && typeof v === 'string') {
+          out[k] = `<redacted:${v.length}b>`;
+        } else {
+          out[k] = this.redactForLog(v);
+        }
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private async runProbeSweep(): Promise<void> {
+    const probes: Array<{ type: string; data: Record<string, unknown> }> = [
+      { type: 'GET_SETTINGS', data: {} },
+      { type: 'GET_SOUNDTRACKS', data: {} },
+      { type: 'GET_CONTROL', data: { getControl: { all: true } } },
+      { type: 'GET_STATUS', data: { getStatus: { all: true } } },
+      { type: 'GET_AUDIO_STREAMING', data: { getAudioStreaming: { all: true } } },
+      { type: 'GET_LIST_NETWORKS', data: {} },
+      { type: 'GET_STATUS_NETWORK', data: {} },
+      { type: 'GET_FIRMWARE', data: {} },
+      { type: 'GET_BANDWIDTH', data: {} },
+      { type: 'GET_UOM', data: {} },
+      { type: 'GET_UOM_URI', data: {} },
+      { type: 'GET_AUTH_KEY', data: {} },
+      { type: 'GET_STING_STATUS', data: {} },
+      { type: 'GET_STING_START', data: {} },
+      { type: 'GET_LOGS_URI', data: {} },
+      { type: 'GET_PLAYBACK', data: {} },
+      { type: 'GET_WIFI_SETUP', data: {} },
+    ];
+
+    this.log.info(`[probe] starting sweep of ${probes.length} GET_* requests on ${this.connectionMode} WS`);
+    for (const probe of probes) {
+      try {
+        const response = await this.sendRequest(probe.type, probe.data, 5_000);
+        this.log.info(
+          `[probe RESULT] ${probe.type} -> OK ${JSON.stringify(this.redactForLog(response))}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.log.info(`[probe RESULT] ${probe.type} -> ERR ${msg}`);
+      }
+    }
+    this.log.info('[probe] sweep complete');
   }
 
   private handleResponse(response: Record<string, unknown>): void {
@@ -352,7 +444,22 @@ export class NanitWebSocketClient {
   }
 
   private handleIncomingRequest(request: Record<string, unknown>): void {
-    const type = request.type as string;
+    const rawType = request.type;
+    const type = typeof rawType === 'string' ? rawType : '';
+    const requestId = request.id as number | undefined;
+
+    if (typeof requestId === 'number' && rawType !== undefined && rawType !== null) {
+      const isGet = type.startsWith('GET_');
+      this.sendRaw({
+        type: 'RESPONSE',
+        response: {
+          requestId,
+          requestType: rawType,
+          statusCode: isGet ? 404 : 200,
+          statusMessage: isGet ? 'Not Found' : '',
+        },
+      });
+    }
 
     if (type === 'PUT_SENSOR_DATA' && request.sensorData) {
       this.processSensorData(request.sensorData as Array<Record<string, unknown>>);
@@ -368,6 +475,36 @@ export class NanitWebSocketClient {
       this.processControl(request.control as Record<string, unknown>);
     }
 
+    if (type === 'PUT_SETTINGS' && request.settings) {
+      this.processSettings(request.settings as Record<string, unknown>);
+    }
+
+    if (type === 'PUT_STATUS' && request.status) {
+      this.processStatus(request.status as Record<string, unknown>);
+    }
+
+    if (type === 'PUT_PLAYBACK' && request.playback) {
+      this.processPlayback(request.playback as Record<string, unknown>);
+    }
+  }
+
+  private processPlayback(playback: Record<string, unknown>): void {
+    const partial: Partial<CameraState> = {};
+    if (playback.status === 'STARTED' || playback.status === 0) {
+      partial.soundPlaying = true;
+    } else if (playback.status === 'STOPPED' || playback.status === 1) {
+      partial.soundPlaying = false;
+    }
+    const track = playback.track as Record<string, unknown> | undefined;
+    if (track && typeof track.filename === 'string') {
+      partial.soundTrack = track.filename;
+    }
+    if (playback.sessionId !== undefined) {
+      partial.soundSessionId = String(playback.sessionId);
+    }
+    if (Object.keys(partial).length > 0) {
+      this.emitStateChange(partial);
+    }
   }
 
   private processSensorData(sensorData: Array<Record<string, unknown>>): void {
@@ -413,8 +550,24 @@ export class NanitWebSocketClient {
   }
 
   private processSettings(settings: Record<string, unknown>): void {
-    if (settings.volume !== undefined) {
-      this.log.debug(`Camera volume setting: ${settings.volume}`);
+    const partial: Partial<CameraState> = {};
+    if (typeof settings.volume === 'number') partial.volume = settings.volume;
+    // nightVision is an enum string after the proto fix. Treat NV_ON as "on"
+    // for HomeKit; NV_AUTO and NV_OFF are both reflected as "off" (HomeKit
+    // can't represent the auto state).
+    if (typeof settings.nightVision === 'string') {
+      partial.nightVision = settings.nightVision === 'NV_ON';
+    } else if (typeof settings.nightVision === 'number') {
+      partial.nightVision = settings.nightVision === 2;
+    }
+    if (typeof settings.sleepMode === 'boolean') partial.sleepMode = settings.sleepMode;
+    if (typeof settings.statusLightOn === 'boolean') partial.statusLightOn = settings.statusLightOn;
+    if (typeof settings.micMuteOn === 'boolean') partial.micMuteOn = settings.micMuteOn;
+    if (typeof settings.nightLightBrightness === 'number') {
+      partial.nightLightBrightness = settings.nightLightBrightness;
+    }
+    if (Object.keys(partial).length > 0) {
+      this.emitStateChange(partial);
     }
   }
 
@@ -467,6 +620,14 @@ export class NanitWebSocketClient {
   }
 
   private async requestInitialState(): Promise<void> {
+    // On local WS, the camera blasts a full state burst on connect, then drops
+    // the channel ~1s later (firmware behavior — cloud is the master control
+    // channel). Don't initiate any GETs locally; just consume the burst.
+    if (this.connectionMode === 'local') {
+      this.log.debug('Local WS: skipping initial GETs (passive observer only)');
+      return;
+    }
+
     try {
       await this.sendRequest('GET_SENSOR_DATA', {
         getSensorData: { all: true },
@@ -522,6 +683,9 @@ export class NanitWebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       const encoded = encodeMessage(obj);
+      if (this.debugProbe && obj.type !== 'KEEPALIVE') {
+        this.logFrame('OUT', encoded, obj);
+      }
       this.ws.send(encoded);
     } catch (err) {
       this.log.error('Failed to send WebSocket message:', err);
@@ -598,11 +762,22 @@ export class NanitWebSocketClient {
     this.emitStateChange({ nightLightOn: on });
   }
 
-  async startPlayback(): Promise<void> {
+  async startPlayback(track?: string): Promise<void> {
+    // Camera expects a Playback frame with sessionId + track { filename }.
+    // Reverse engineered from a frame the iOS app emits when starting the
+    // sound machine. Filename is the last-observed track on the camera, or
+    // a known default (camera ships with several .wav files).
+    const filename = track ?? this.state.soundTrack ?? 'Birds.wav';
     await this.sendRequest('PUT_PLAYBACK', {
-      playback: { status: 'STARTED' },
+      playback: {
+        status: 'STARTED',
+        // Sentinel observed in capture: max uint64. Likely "session forever"
+        // marker. protobufjs encodes Long; pass as a string to be explicit.
+        sessionId: '18446744073709551615',
+        track: { mode: 0, filename },
+      },
     });
-    this.emitStateChange({ soundPlaying: true });
+    this.emitStateChange({ soundPlaying: true, soundTrack: filename });
   }
 
   async stopPlayback(): Promise<void> {
@@ -610,6 +785,43 @@ export class NanitWebSocketClient {
       playback: { status: 'STOPPED' },
     });
     this.emitStateChange({ soundPlaying: false });
+  }
+
+  async setVolume(volume: number): Promise<void> {
+    const v = Math.max(0, Math.min(100, Math.round(volume)));
+    await this.sendRequest('PUT_SETTINGS', { settings: { volume: v } });
+    this.emitStateChange({ volume: v });
+  }
+
+  async setNightLightBrightness(brightness: number): Promise<void> {
+    const v = Math.max(0, Math.min(100, Math.round(brightness)));
+    await this.sendRequest('PUT_SETTINGS', { settings: { nightLightBrightness: v } });
+    this.emitStateChange({ nightLightBrightness: v });
+  }
+
+  async setNightVision(on: boolean): Promise<void> {
+    // Three-state: NV_OFF=0, NV_AUTO=1, NV_ON=2. HomeKit Switch maps
+    // On -> NV_ON (force IR on), Off -> NV_OFF (force IR off). Auto is
+    // unreachable from HomeKit but remains settable in the Nanit app.
+    await this.sendRequest('PUT_SETTINGS', {
+      settings: { nightVision: on ? 'NV_ON' : 'NV_OFF' },
+    });
+    this.emitStateChange({ nightVision: on });
+  }
+
+  async setSleepMode(on: boolean): Promise<void> {
+    await this.sendRequest('PUT_SETTINGS', { settings: { sleepMode: on } });
+    this.emitStateChange({ sleepMode: on });
+  }
+
+  async setStatusLight(on: boolean): Promise<void> {
+    await this.sendRequest('PUT_SETTINGS', { settings: { statusLightOn: on } });
+    this.emitStateChange({ statusLightOn: on });
+  }
+
+  async setMicMute(on: boolean): Promise<void> {
+    await this.sendRequest('PUT_SETTINGS', { settings: { micMuteOn: on } });
+    this.emitStateChange({ micMuteOn: on });
   }
 
   disconnect(): void {

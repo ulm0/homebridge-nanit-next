@@ -31,13 +31,19 @@ export interface NanitPlatformConfig {
   rtmpListenPort?: number;
   localAddress?: string;
   enableHksv?: boolean;
+  enableTalkback?: boolean;
   cameras?: Array<{
     babyUid?: string;
     name?: string;
     localIp?: string;
     enableLight?: boolean;
     enableSound?: boolean;
+    enableSoundTracks?: boolean;
     enableSensors?: boolean;
+    enableNightVision?: boolean;
+    enableSleepMode?: boolean;
+    enableStatusLight?: boolean;
+    enableMicMute?: boolean;
   }>;
   videoConfig?: {
     maxWidth?: number;
@@ -46,6 +52,9 @@ export interface NanitPlatformConfig {
     maxBitrate?: number;
     audio?: boolean;
     debug?: boolean;
+  };
+  debug?: {
+    probe?: boolean;
   };
 }
 

@@ -19,6 +19,10 @@ export class SensorServices {
       || accessory.accessory.addService(Service.TemperatureSensor, 'Temperature', 'nanit-temperature');
 
     this.temperatureService.setCharacteristic(Characteristic.Name, 'Temperature');
+    if (!this.temperatureService.testCharacteristic(Characteristic.ConfiguredName)) {
+      this.temperatureService.addCharacteristic(Characteristic.ConfiguredName);
+    }
+    this.temperatureService.setCharacteristic(Characteristic.ConfiguredName, 'Temperature');
 
     this.temperatureService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() => this.temperature);
@@ -27,6 +31,10 @@ export class SensorServices {
       || accessory.accessory.addService(Service.HumiditySensor, 'Humidity', 'nanit-humidity');
 
     this.humidityService.setCharacteristic(Characteristic.Name, 'Humidity');
+    if (!this.humidityService.testCharacteristic(Characteristic.ConfiguredName)) {
+      this.humidityService.addCharacteristic(Characteristic.ConfiguredName);
+    }
+    this.humidityService.setCharacteristic(Characteristic.ConfiguredName, 'Humidity');
 
     this.humidityService.getCharacteristic(Characteristic.CurrentRelativeHumidity)
       .onGet(() => this.humidity);

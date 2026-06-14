@@ -51,10 +51,13 @@ export function encodeMessage(obj: Record<string, unknown>): Uint8Array {
 export function decodeMessage(buffer: Uint8Array): Record<string, unknown> {
   const MessageType = getMessageType();
   const message = MessageType.decode(buffer);
+  // defaults: false so callers can distinguish "field not in wire" from
+  // "field explicitly set to 0/false" — important for delta PUT_SETTINGS
+  // frames where the camera only includes the field that changed.
   return MessageType.toObject(message, {
     longs: Number,
     enums: String,
-    defaults: true,
+    defaults: false,
     bytes: String,
   }) as Record<string, unknown>;
 }

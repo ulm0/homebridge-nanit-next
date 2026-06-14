@@ -2,8 +2,8 @@
   "name": "homebridge-nanit-next",
   "displayName": "Nanit for Homebridge",
   "type": "module",
-  "version": "1.0.8",
-  "description": "Homebridge plugin for Nanit baby cameras with native HomeKit integration: live streaming (local/cloud/auto), two-way audio (not supported yet, only listening is available at the moment), night light, sound machine, and sensors.",
+  "version": "1.1.0",
+  "description": "Homebridge plugin for Nanit baby cameras with native HomeKit integration: live streaming (local/cloud/auto), camera audio listen-in, night light (with brightness), sound machine (volume + 4 tracks), night vision, sleep mode, status light, microphone mute, and temperature/humidity sensors.",
   "author": "ulm0",
   "license": "MIT",
   "repository": {
@@ -38,18 +38,18 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@homebridge/plugin-ui-utils": "^2.2.1",
-    "node-media-server": "^4.2.4",
+    "@homebridge/plugin-ui-utils": "^2.2.4",
+    "node-media-server": "^4.2.8",
     "pick-port": "^2.2.0",
-    "protobufjs": "^8.0.0",
-    "ws": "^8.19.0"
+    "protobufjs": "^8.6.3",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.3",
     "@types/ws": "^8.18.1",
     "homebridge": "^2.1.0",
     "nodemon": "^3.1.14",
     "rimraf": "^6.1.3",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   }
 }

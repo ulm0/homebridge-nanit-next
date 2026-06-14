@@ -61,6 +61,12 @@
         "default": false,
         "description": "Enable HomeKit Secure Video recording. Requires an iCloud storage plan and a HomeKit hub (HomePod, Apple TV 4K, or iPad). Disabling this removes the motion sensor and cloud recording capability. This feature is experimental and may not work as expected. This feature is disabled by default because it may causes 403 errors with the Nanit API."
       },
+      "enableTalkback": {
+        "title": "[Legacy] Enable Two-Way Talk (Gen 1 cameras only)",
+        "type": "boolean",
+        "default": false,
+        "description": "Talk-back uses RTSP ANNOUNCE to push HomeKit mic audio to the camera. Gen 2/3 (Pro) firmware does NOT support ANNOUNCE — only legacy Gen 1 cameras may work. Leave off unless you have an older camera and verified it works."
+      },
       "cameras": {
         "title": "Camera Configuration",
         "type": "array",
@@ -93,11 +99,50 @@
               "type": "boolean",
               "default": true
             },
+            "enableSoundTracks": {
+              "title": "Enable Sound Machine Track Switches",
+              "type": "boolean",
+              "default": true,
+              "description": "Add 4 individual switches (Birds, Waves, White Noise, Wind) so you can pick a track from HomeKit. Disable to keep only the master Sound Machine on/off + volume control."
+            },
             "enableSensors": {
               "title": "Enable Temperature & Humidity Sensors",
               "type": "boolean",
               "default": true
+            },
+            "enableNightVision": {
+              "title": "Enable Night Vision Switch",
+              "type": "boolean",
+              "default": true
+            },
+            "enableSleepMode": {
+              "title": "Enable Sleep Mode Switch",
+              "type": "boolean",
+              "default": true
+            },
+            "enableStatusLight": {
+              "title": "Enable Status Light Switch",
+              "type": "boolean",
+              "default": true
+            },
+            "enableMicMute": {
+              "title": "Enable Camera Microphone Switch",
+              "type": "boolean",
+              "default": true,
+              "description": "On = camera microphone enabled (default). Off = camera mic muted system-wide (no audio to HomeKit or the Nanit app)."
             }
+          }
+        }
+      },
+      "debug": {
+        "title": "Debug",
+        "type": "object",
+        "properties": {
+          "probe": {
+            "title": "Probe Camera Capabilities (reverse engineering)",
+            "type": "boolean",
+            "default": false,
+            "description": "On WebSocket connect, send all known GET_* protobuf requests and log every inbound frame as decoded JSON + hex. Used to discover undocumented camera features. Verbose — leave off in normal operation."
           }
         }
       },
@@ -156,7 +201,8 @@
         "streamMode",
         "localAddress",
         "rtmpListenPort",
-        "enableHksv"
+        "enableHksv",
+        "enableTalkback"
       ]
     },
     {
@@ -183,7 +229,12 @@
             "cameras[].localIp",
             "cameras[].enableLight",
             "cameras[].enableSound",
-            "cameras[].enableSensors"
+            "cameras[].enableSoundTracks",
+            "cameras[].enableSensors",
+            "cameras[].enableNightVision",
+            "cameras[].enableSleepMode",
+            "cameras[].enableStatusLight",
+            "cameras[].enableMicMute"
           ]
         }
       ]
@@ -199,6 +250,14 @@
         "videoConfig.maxBitrate",
         "videoConfig.audio",
         "videoConfig.debug"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Debug",
+      "expandable": true,
+      "items": [
+        "debug.probe"
       ]
     }
   ]

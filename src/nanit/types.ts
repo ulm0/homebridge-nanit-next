@@ -42,9 +42,15 @@ export interface CameraState {
   nightLightBrightness: number;
   soundPlaying: boolean;
   soundTrack?: string;
+  soundSessionId?: string;
   isStreaming: boolean;
   isConnected: boolean;
   firmwareVersion?: string;
+  volume?: number;
+  nightVision?: boolean;
+  sleepMode?: boolean;
+  statusLightOn?: boolean;
+  micMuteOn?: boolean;
 }
 
 export type CameraStateListener = (state: Partial<CameraState>) => void;

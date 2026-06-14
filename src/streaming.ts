@@ -69,7 +69,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly maxBitrate: number;
   private readonly enableAudio: boolean;
   private readonly debug: boolean;
-  private talkbackEnabled = true;
+  private talkbackEnabled: boolean;
 
   /** Set to a function that returns true if the HKSV prebuffer is active */
   isPrebufferActive: (() => boolean) | undefined;
@@ -93,6 +93,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.maxBitrate = config.videoConfig?.maxBitrate ?? 2000;
     this.enableAudio = config.videoConfig?.audio ?? true;
     this.debug = config.videoConfig?.debug ?? false;
+    // Talk-back disabled by default. Camera firmware probed (Pro/Gen 2/3,
+    // version 6.55.611) advertises only PLAY/DESCRIBE/SETUP/TEARDOWN on
+    // RTSP — no ANNOUNCE method, so the existing RTSP-push path can never
+    // succeed. Older Gen 1 cameras may still accept ANNOUNCE; that's why
+    // it's an opt-in flag rather than a deletion.
+    this.talkbackEnabled = config.enableTalkback ?? false;
 
     api.on(APIEvent.SHUTDOWN, () => {
       for (const sessionId of this.ongoingSessions.keys()) {
