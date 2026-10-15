@@ -1,5 +1,6 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import type { Logging } from 'homebridge';
+import bundledFfmpeg from 'ffmpeg-for-homebridge';
 
 export class FfmpegProcess {
   private process: ChildProcess | null = null;
@@ -80,7 +81,7 @@ export class FfmpegProcess {
 }
 
 export function findFfmpeg(): string {
-  return process.env.FFMPEG_PATH || 'ffmpeg';
+  return process.env.FFMPEG_PATH || bundledFfmpeg || 'ffmpeg';
 }
 
 /**
@@ -148,37 +149,30 @@ export interface AacEncoder {
   profileArgs: string[];
 }
 
-const AAC_CANDIDATES: Array<{ codec: string; profileArgs: string[] }> = [
-  { codec: 'libfdk_aac', profileArgs: ['-profile:a', 'aac_eld'] },
-  { codec: 'aac_at', profileArgs: ['-aac_at_mode', 'cvbr'] },
-  { codec: 'aac', profileArgs: [] },
-];
-
-let cachedAacEncoder: AacEncoder | null = null;
+const cachedAacEncoders = new Map<string, AacEncoder>();
 
 export function detectAacEncoder(ffmpegPath: string, log?: Logging): AacEncoder {
-  if (cachedAacEncoder) return cachedAacEncoder;
+  const cached = cachedAacEncoders.get(ffmpegPath);
+  if (cached) return cached;
 
-  let encoderList = '';
+  let encoderList: string;
   try {
     encoderList = execFileSync(ffmpegPath, ['-encoders', '-hide_banner'], {
       timeout: 5000,
     }).toString();
   } catch {
-    log?.warn('Could not query ffmpeg encoders, defaulting to built-in aac');
-    cachedAacEncoder = { codec: 'aac', profileArgs: [] };
-    return cachedAacEncoder;
+    throw new Error('Could not query FFmpeg encoders. Install ffmpeg-for-homebridge or check FFMPEG_PATH.');
   }
 
-  for (const candidate of AAC_CANDIDATES) {
-    if (encoderList.includes(` ${candidate.codec} `) || encoderList.includes(` ${candidate.codec}\n`)) {
-      log?.info(`Using AAC encoder: ${candidate.codec}`);
-      cachedAacEncoder = candidate;
-      return cachedAacEncoder;
-    }
+  // Live HomeKit audio negotiates AAC-ELD. Native AAC defaults to LC, and
+  // AudioToolbox ELD did not produce audible HomeKit playback in testing.
+  if (!/^\s*\S+\s+libfdk_aac(?:\s|$)/m.test(encoderList)) {
+    throw new Error('HomeKit live audio requires libfdk_aac (AAC-ELD). '
+      + 'Install ffmpeg-for-homebridge or set FFMPEG_PATH to a build with libfdk_aac.');
   }
 
-  log?.warn('No known AAC encoder found, defaulting to built-in aac');
-  cachedAacEncoder = { codec: 'aac', profileArgs: [] };
-  return cachedAacEncoder;
+  const encoder = { codec: 'libfdk_aac', profileArgs: ['-profile:a', 'aac_eld'] };
+  log?.info('Using AAC encoder: libfdk_aac');
+  cachedAacEncoders.set(ffmpegPath, encoder);
+  return encoder;
 }

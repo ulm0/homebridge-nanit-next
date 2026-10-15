@@ -320,7 +320,15 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     );
 
     if (this.enableAudio) {
-      const aacEncoder = detectAacEncoder(this.videoProcessor, this.log);
+      let aacEncoder;
+      try {
+        aacEncoder = detectAacEncoder(this.videoProcessor, this.log);
+      } catch (err) {
+        this.log.error(`[${this.cameraName}] Cannot start live audio:`, err);
+        this.pendingSessions.delete(request.sessionID);
+        callback(err as Error);
+        return;
+      }
       ffmpegArgs.push(
         '-map', '0:a:0?',
         '-codec:a', aacEncoder.codec,

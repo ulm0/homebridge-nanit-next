@@ -33,12 +33,14 @@
     "homebridge-ui"
   ],
   "scripts": {
+    "test": "npm run build && node --test test/*.test.mjs",
     "build": "rimraf ./dist && tsc",
     "watch": "npm run build && npm link && nodemon",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.4",
+    "ffmpeg-for-homebridge": "^2.2.2",
     "node-media-server": "^4.2.8",
     "pick-port": "^2.2.1",
     "protobufjs": "^8.6.3",

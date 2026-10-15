@@ -25,6 +25,17 @@ Two-way talk is **not supported on Nanit Pro (Gen 2/3) firmware**. The camera's 
 
 A legacy RTSP-ANNOUNCE talk-back path exists for Gen 1 cameras and can be opted into via `enableTalkback: true`. Leave off otherwise — it will only generate harmless errors in the log on Pro firmware.
 
+### Live audio
+
+The plugin uses the FFmpeg binary supplied by `ffmpeg-for-homebridge` by default,
+including its `libfdk_aac` encoder for HomeKit AAC-ELD audio. An explicit
+`FFMPEG_PATH` environment variable takes precedence. If the bundled binary is
+unavailable on your platform, the plugin falls back to `ffmpeg` on your PATH.
+For live audio, that binary must include `libfdk_aac`; the plugin reports an
+error instead of silently encoding an incompatible AAC profile. See the
+[FFmpeg build requirements](https://github.com/homebridge/ffmpeg-for-homebridge#supported-platforms)
+for supported platforms.
+
 ## Requirements
 
 - [Homebridge](https://homebridge.io) v1.11+ or v2.0+
