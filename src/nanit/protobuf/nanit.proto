@@ -133,7 +133,8 @@ message Settings {
   optional int32 nightLightBrightness = 24;
 
   message SensorSettings {
-    required SensorType sensorType = 1;
+    // Firmware can omit this field in settings bursts; preserve its absence.
+    optional SensorType sensorType = 1;
     optional bool useLowThreshold = 2;
     optional bool useHighThreshold = 3;
     optional int32 lowThreshold = 4;
@@ -253,7 +254,8 @@ message AudioStreaming {
 
 message Request {
   required int32 id = 1;
-  required RequestType type = 2;
+  // Some firmware sends id-only requests. Do not infer a request type.
+  optional RequestType type = 2;
   optional Streaming streaming = 4;
   optional Settings settings = 5;
   optional Status status = 7;

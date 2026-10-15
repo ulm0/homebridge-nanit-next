@@ -21,6 +21,7 @@ interface PendingRequest {
 export class NanitWebSocketClient {
   private ws: WebSocket | null = null;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private sensorPollTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
   private connectedAtMs = 0;
@@ -590,9 +591,19 @@ export class NanitWebSocketClient {
     this.keepAliveTimer = setInterval(() => {
       this.sendRaw({ type: 'KEEPALIVE' });
     }, WS_KEEPALIVE_INTERVAL_MS);
+    // Local firmware may not push sensor updates unless explicitly queried.
+    if (this.connectionMode === 'local') {
+      this.sensorPollTimer = setInterval(() => {
+        void this.requestSensorState();
+      }, 60_000);
+    }
   }
 
   private stopKeepalive(): void {
+    if (this.sensorPollTimer) {
+      clearInterval(this.sensorPollTimer);
+      this.sensorPollTimer = null;
+    }
     if (this.keepAliveTimer) {
       clearInterval(this.keepAliveTimer);
       this.keepAliveTimer = null;
@@ -620,21 +631,10 @@ export class NanitWebSocketClient {
   }
 
   private async requestInitialState(): Promise<void> {
-    // On local WS, the camera blasts a full state burst on connect, then drops
-    // the channel ~1s later (firmware behavior — cloud is the master control
-    // channel). Don't initiate any GETs locally; just consume the burst.
-    if (this.connectionMode === 'local') {
-      this.log.debug('Local WS: skipping initial GETs (passive observer only)');
-      return;
-    }
-
-    try {
-      await this.sendRequest('GET_SENSOR_DATA', {
-        getSensorData: { all: true },
-      });
-    } catch (err) {
-      this.log.debug('Failed to get initial sensor data:', err);
-    }
+    await this.requestSensorState();
+    // Keep other initial queries and push configuration cloud-only. Local
+    // sensors are refreshed by polling without changing camera settings.
+    if (this.connectionMode === 'local') return;
 
     try {
       this.sendRaw({
@@ -661,6 +661,16 @@ export class NanitWebSocketClient {
       await this.enableSensorPush();
     } catch (err) {
       this.log.debug('Failed to enable sensor push:', err);
+    }
+  }
+
+  private async requestSensorState(): Promise<void> {
+    try {
+      await this.sendRequest('GET_SENSOR_DATA', {
+        getSensorData: { all: true },
+      });
+    } catch (err) {
+      this.log.debug('Failed to get sensor data:', err);
     }
   }
 

@@ -33,6 +33,7 @@
     "homebridge-ui"
   ],
   "scripts": {
+    "test": "npm run build && node --test test/*.test.mjs",
     "build": "rimraf ./dist && tsc",
     "watch": "npm run build && npm link && nodemon",
     "prepublishOnly": "npm run build"
