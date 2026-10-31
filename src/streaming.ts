@@ -157,22 +157,11 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     const width = request.width ?? this.maxWidth;
     const height = request.height ?? this.maxHeight;
 
-    // 1. Try the Nanit REST snapshot endpoint
-    try {
-      const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
-      if (snapshot && snapshot.length > 0) {
-        this.cachedSnapshot = snapshot;
-        callback(undefined, snapshot);
-        return;
-      }
-    } catch (err) {
-      this.log.warn(`[${this.cameraName}] Failed to fetch REST snapshot:`, err);
-    }
-
-    // 2. Try capturing a frame from the live local RTMP stream
+    // 1. Prefer a frame from the live local RTMP stream when one is publishing:
+    //    it is current, and needs no round trip to Nanit's cloud.
     const localPlayUrl = this.streamResolver.getActiveLocalPlayUrl(this.babyUid);
     if (localPlayUrl) {
-      this.log.debug(`[${this.cameraName}] REST snapshot unavailable, capturing frame from local stream`);
+      this.log.debug(`[${this.cameraName}] Capturing snapshot from local stream`);
       try {
         const frame = await captureSnapshot(this.videoProcessor, localPlayUrl, width, height);
         if (frame && frame.length > 0) {
@@ -183,6 +172,18 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       } catch (err) {
         this.log.warn(`[${this.cameraName}] Failed to capture snapshot from local stream:`, err);
       }
+    }
+
+    // 2. Fall back to the Nanit REST snapshot endpoint
+    try {
+      const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
+      if (snapshot && snapshot.length > 0) {
+        this.cachedSnapshot = snapshot;
+        callback(undefined, snapshot);
+        return;
+      }
+    } catch (err) {
+      this.log.warn(`[${this.cameraName}] Failed to fetch REST snapshot:`, err);
     }
 
     // 3. Return the last cached snapshot if available
