@@ -69,6 +69,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly maxBitrate: number;
   private readonly enableAudio: boolean;
   private readonly debug: boolean;
+  private readonly probeUs: number;
   private talkbackEnabled: boolean;
 
   /** Set to a function that returns true if the HKSV prebuffer is active */
@@ -93,6 +94,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.maxBitrate = config.videoConfig?.maxBitrate ?? 2000;
     this.enableAudio = config.videoConfig?.audio ?? true;
     this.debug = config.videoConfig?.debug ?? false;
+    this.probeUs = Math.max(0, config.videoConfig?.probeMs ?? 5000) * 1000;
     // Talk-back disabled by default. Camera firmware probed (Pro/Gen 2/3,
     // version 6.55.611) advertises only PLAY/DESCRIBE/SETUP/TEARDOWN on
     // RTSP — no ANNOUNCE method, so the existing RTSP-push path can never
@@ -291,8 +293,11 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     ];
 
     if (isRtmp) {
+      // analyzeduration is measured in stream time, not wall-clock time. When
+      // the stream is already warm, the RTMP server's GOP cache delivers the
+      // last few seconds instantly, so a short probe finishes almost at once.
       ffmpegArgs.push(
-        '-analyzeduration', '5000000',
+        '-analyzeduration', `${this.probeUs}`,
         '-probesize', '5000000',
         '-rw_timeout', '10000000',
       );
