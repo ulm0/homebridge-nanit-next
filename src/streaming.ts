@@ -23,6 +23,7 @@ import {
   AudioStreamingSamplerate,
   StreamRequestTypes,
 } from 'homebridge';
+import { execFile } from 'node:child_process';
 import { createSocket, type Socket } from 'node:dgram';
 import { pickPort } from 'pick-port';
 import { FfmpegProcess, findFfmpeg, detectAacEncoder, captureSnapshot } from './utils.js';
@@ -62,6 +63,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
   private cachedSnapshot: Buffer | null = null;
+  /** Dark placeholder shown while the camera is switched off; rendered once, lazily. */
+  private cameraOffSnapshot: Promise<Buffer | null> | null = null;
 
   private readonly maxWidth: number;
   private readonly maxHeight: number;
@@ -102,6 +105,16 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     api.on(APIEvent.SHUTDOWN, () => {
       for (const sessionId of this.ongoingSessions.keys()) {
+        this.stopStream(sessionId);
+      }
+    });
+
+    // Camera switched off while someone is watching: end their live view.
+    wsClient.onStateChange((state) => {
+      if (state.sleepMode !== true || this.ongoingSessions.size === 0) return;
+      this.log.info(`[${this.cameraName}] Camera switched off, ending live view`);
+      for (const sessionId of [...this.ongoingSessions.keys()]) {
+        this.controller.forceStopStreamingSession(sessionId);
         this.stopStream(sessionId);
       }
     });
@@ -156,6 +169,17 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   async handleSnapshotRequest(request: SnapshotRequest, callback: SnapshotRequestCallback): Promise<void> {
     const width = request.width ?? this.maxWidth;
     const height = request.height ?? this.maxHeight;
+
+    // 0. Camera switched off: show a dark frame rather than a stale image.
+    if (this.isCameraOff) {
+      const off = await this.getCameraOffSnapshot();
+      if (off) {
+        callback(undefined, off);
+      } else {
+        callback(new Error('Camera is switched off'));
+      }
+      return;
+    }
 
     // 1. Try the Nanit REST snapshot endpoint
     try {
@@ -261,6 +285,15 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     if (!sessionInfo) {
       this.log.error(`[${this.cameraName}] No session info found`);
       callback(new Error('No session info'));
+      return;
+    }
+
+    // Camera switched off: fail fast instead of waiting ~30s for a stream
+    // that will never come — and never ask a switched-off camera to stream.
+    if (this.isCameraOff) {
+      this.log.info(`[${this.cameraName}] Live view requested, but the camera is switched off`);
+      this.pendingSessions.delete(request.sessionID);
+      callback(new Error('Camera is switched off'));
       return;
     }
 
@@ -497,6 +530,37 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     activeSession.stopAudio = () => {
       returnProcess.stop();
     };
+  }
+
+  /** True while the camera is switched off (Nanit "sleep mode"). */
+  private get isCameraOff(): boolean {
+    return this.wsClient.currentState.sleepMode === true;
+  }
+
+  private getCameraOffSnapshot(): Promise<Buffer | null> {
+    if (!this.cameraOffSnapshot) {
+      this.cameraOffSnapshot = new Promise<Buffer | null>((resolve) => {
+        execFile(
+          this.videoProcessor,
+          [
+            '-hide_banner', '-loglevel', 'error',
+            '-f', 'lavfi', '-i', `color=c=0x101012:s=${this.maxWidth}x${this.maxHeight}`,
+            '-frames:v', '1', '-f', 'image2', '-c:v', 'mjpeg', 'pipe:1',
+          ],
+          { encoding: 'buffer', timeout: 5_000 },
+          (err, stdout) => {
+            if (err || stdout.length === 0) {
+              this.log.warn(`[${this.cameraName}] Could not render camera-off snapshot:`, err);
+              this.cameraOffSnapshot = null; // retry next time
+              resolve(null);
+              return;
+            }
+            resolve(stdout);
+          },
+        );
+      });
+    }
+    return this.cameraOffSnapshot;
   }
 
   private stopStream(sessionId: string): void {
