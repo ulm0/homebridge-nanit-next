@@ -71,8 +71,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly debug: boolean;
   private talkbackEnabled: boolean;
 
-  /** Set to a function that returns true if the HKSV prebuffer is active */
-  isPrebufferActive: (() => boolean) | undefined;
+  /**
+   * Set to a function that returns true while something else (the HKSV
+   * prebuffer, the stream keep-alive) still needs the camera to keep
+   * publishing after the last live-view session ends.
+   */
+  shouldKeepCameraStreaming: (() => boolean) | undefined;
 
   constructor(
     private readonly log: Logging,
@@ -511,8 +515,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.ongoingSessions.delete(sessionId);
 
     if (this.ongoingSessions.size === 0) {
-      if (this.isPrebufferActive?.()) {
-        this.log.debug(`[${this.cameraName}] Not stopping camera stream — prebuffer is still active`);
+      if (this.shouldKeepCameraStreaming?.()) {
+        this.log.debug(`[${this.cameraName}] Not stopping camera stream — prebuffer or keep-alive still needs it`);
       } else {
         this.streamResolver.stopStream(this.wsClient).catch(() => {
           // Best effort

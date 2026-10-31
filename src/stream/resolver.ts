@@ -83,6 +83,19 @@ export class StreamResolver {
     return null;
   }
 
+  /**
+   * Negotiates (or reuses) a local RTMP stream. Unlike getStreamSource(),
+   * this never falls back to the cloud, whatever the stream mode.
+   */
+  ensureLocalStream(babyUid: string, wsClient: NanitWebSocketClient): Promise<StreamInfo> {
+    return this.serializedGetLocalStream(babyUid, wsClient);
+  }
+
+  /** Called with the baby UID whenever the camera stops pushing to the local RTMP server. */
+  onLocalStreamEnded(listener: (babyUid: string) => void): () => void {
+    return this.rtmpServer.onStreamEnded(listener);
+  }
+
   private serializedGetLocalStream(
     babyUid: string,
     wsClient: NanitWebSocketClient,
