@@ -3,6 +3,7 @@ import type { Logging } from 'homebridge';
 import type { CameraRecordingConfiguration } from 'homebridge';
 import type { StreamResolver } from './stream/resolver.js';
 import type { NanitWebSocketClient } from './nanit/websocket.js';
+import type { CameraState } from './nanit/types.js';
 import { findFfmpeg } from './utils.js';
 import { HKSV_PREBUFFER_MS } from './settings.js';
 
@@ -18,6 +19,9 @@ const WS_WAIT_MAX_MS = 30_000;
 /**
  * Reads an fMP4 stream from FFmpeg stdout and splits it into ISO BMFF boxes.
  * Emits `moov` (initialization segment) and `moof+mdat` pairs (media fragments).
+ *
+ * While the camera is switched off (Nanit "sleep mode"), the prebuffer
+ * pauses: it stops FFmpeg and never asks a switched-off camera to stream.
  */
 export class NanitPrebuffer {
   private ffmpeg: ChildProcess | null = null;
@@ -29,6 +33,11 @@ export class NanitPrebuffer {
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartAttempt = 0;
   private config: CameraRecordingConfiguration | undefined;
+  /** True while the camera is switched off: no FFmpeg runs and no stream is requested. */
+  private pausedForSleep = false;
+  private unsubscribeState: (() => void) | null = null;
+  /** Bumped by every launch and pause, so a launch that was overtaken while awaiting stops. */
+  private launchGeneration = 0;
 
   private readonly videoProcessor: string;
 
@@ -77,6 +86,7 @@ export class NanitPrebuffer {
     this.active = true;
     this.restartAttempt = 0;
     this.log.debug(`[${this.cameraName}] Starting HKSV prebuffer`);
+    this.unsubscribeState = this.wsClient.onStateChange((state) => this.onCameraStateChange(state));
     this.launchFfmpeg().catch(err => {
       this.log.error(`[${this.cameraName}] Prebuffer unexpected error:`, err);
     });
@@ -85,6 +95,9 @@ export class NanitPrebuffer {
   stop(): void {
     if (!this.active) return;
     this.active = false;
+    this.pausedForSleep = false;
+    this.unsubscribeState?.();
+    this.unsubscribeState = null;
     this.log.debug(`[${this.cameraName}] Stopping HKSV prebuffer`);
     this.killFfmpeg();
     if (this.restartTimer) {
@@ -101,11 +114,14 @@ export class NanitPrebuffer {
 
   private async launchFfmpeg(): Promise<void> {
     if (this.destroyed || !this.active) return;
+    if (this.pauseIfCameraOff()) return;
+    const generation = ++this.launchGeneration;
 
     // Wait for the WebSocket to be connected before attempting stream negotiation.
     // This avoids the first-launch race where the WS is still connecting.
     const wsReady = await this.waitForWsConnection();
-    if (!wsReady || this.destroyed || !this.active) return;
+    if (!wsReady || this.destroyed || !this.active || generation !== this.launchGeneration) return;
+    if (this.pauseIfCameraOff()) return;
 
     let streamUrl: string;
     try {
@@ -115,6 +131,8 @@ export class NanitPrebuffer {
       this.scheduleRestart();
       return;
     }
+    // A pause (or a newer launch) that arrived during negotiation must not spawn FFmpeg.
+    if (this.destroyed || !this.active || generation !== this.launchGeneration) return;
 
     const res = this.config?.videoCodec.resolution;
     const width = res ? res[0] : 1280;
@@ -194,7 +212,7 @@ export class NanitPrebuffer {
       if (this.ffmpeg === proc) {
         this.ffmpeg = null;
       }
-      if (this.active && !this.destroyed) {
+      if (this.active && !this.destroyed && !this.pausedForSleep) {
         this.log.warn(`[${this.cameraName}] Prebuffer FFmpeg exited (code=${code}), restarting...`);
         this.scheduleRestart();
       }
@@ -350,8 +368,63 @@ export class NanitPrebuffer {
     }
   }
 
+  /** True while the camera is switched off (Nanit "sleep mode"). */
+  private get isCameraOff(): boolean {
+    return this.wsClient.currentState.sleepMode === true;
+  }
+
+  /**
+   * Never asks a switched-off camera to stream. Returns true when the camera
+   * is off; the state listener resumes the prebuffer once it is back on.
+   */
+  private pauseIfCameraOff(): boolean {
+    if (!this.isCameraOff) return false;
+    if (!this.pausedForSleep) {
+      this.pausedForSleep = true;
+      this.log.info(`[${this.cameraName}] Prebuffer: camera is off, pausing`);
+    }
+    return true;
+  }
+
+  /**
+   * Reacts to sleep-mode transitions only: the WebSocket client forwards
+   * every settings message, so a repeated `sleepMode: false` must not
+   * launch a second FFmpeg.
+   */
+  private onCameraStateChange(state: Partial<CameraState>): void {
+    if (!this.active || this.destroyed) return;
+
+    // Camera switched off: stop FFmpeg and the push, stay idle until it is back on.
+    if (state.sleepMode === true && !this.pausedForSleep) {
+      this.pausedForSleep = true;
+      this.launchGeneration++;
+      this.log.info(`[${this.cameraName}] Prebuffer: camera is off, pausing`);
+      if (this.restartTimer) {
+        clearTimeout(this.restartTimer);
+        this.restartTimer = null;
+      }
+      this.killFfmpeg();
+      if (this.streamResolver.getActiveLocalPlayUrl(this.babyUid)) {
+        this.streamResolver.stopStream(this.wsClient).catch(() => { /* best effort */ });
+      }
+      return;
+    }
+
+    if (state.sleepMode === false && this.pausedForSleep) {
+      this.pausedForSleep = false;
+      this.log.info(`[${this.cameraName}] Prebuffer: camera is on, resuming`);
+      // Fresh initialization segment for consumers, as after a restart.
+      this.moovBox = null;
+      this.segments = [];
+      this.restartAttempt = 0;
+      this.launchFfmpeg().catch(err => {
+        this.log.error(`[${this.cameraName}] Prebuffer unexpected error on resume:`, err);
+      });
+    }
+  }
+
   private scheduleRestart(): void {
-    if (this.restartTimer || this.destroyed || !this.active) return;
+    if (this.restartTimer || this.destroyed || !this.active || this.pausedForSleep) return;
 
     const delayMs = RESTART_DELAYS_MS[Math.min(this.restartAttempt, RESTART_DELAYS_MS.length - 1)];
     this.restartAttempt++;
