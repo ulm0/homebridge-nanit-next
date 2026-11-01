@@ -109,8 +109,10 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       }
     });
 
-    // Camera switched off while someone is watching: end their live view.
+    // Camera switched off: tell HomeKit, and end any live view in progress.
     wsClient.onStateChange((state) => {
+      if (state.sleepMode === undefined) return;
+      this.publishCameraOff(state.sleepMode);
       if (state.sleepMode !== true || this.ongoingSessions.size === 0) return;
       this.log.info(`[${this.cameraName}] Camera switched off, ending live view`);
       for (const sessionId of [...this.ongoingSessions.keys()]) {
@@ -164,6 +166,29 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     };
 
     this.controller = new hap.CameraController(options);
+  }
+
+  /**
+   * Reports the camera being switched off (Nanit "sleep mode") to HomeKit
+   * through the Camera Operating Mode service's optional Manually Disabled
+   * characteristic, which HomeKit defines for a physical privacy switch.
+   * The Home app then shows the camera as "Off" and does not ask for a
+   * stream or a snapshot; it also turns HKSV recording off and back on by
+   * itself. Without this, the Home app re-sends a failed stream request
+   * about 13 times per second for as long as the live view stays open.
+   *
+   * The service only exists when HKSV recording is configured, and the
+   * characteristic's HAP format is bool. Homebridge persists its value in
+   * the cached accessory, so it survives a restart; it is only sent on a
+   * known camera state, never at construction.
+   */
+  private publishCameraOff(off: boolean): void {
+    const operatingMode = this.controller.recordingManagement?.operatingModeService;
+    if (!operatingMode) return;
+    const characteristic = operatingMode.getCharacteristic(this.hap.Characteristic.ManuallyDisabled);
+    if (characteristic.value === off) return;
+    this.log.info(`[${this.cameraName}] Telling HomeKit the camera is ${off ? 'off' : 'on'}`);
+    characteristic.updateValue(off);
   }
 
   async handleSnapshotRequest(request: SnapshotRequest, callback: SnapshotRequestCallback): Promise<void> {
@@ -288,10 +313,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
-    // Camera switched off: fail fast instead of waiting ~30s for a stream
-    // that will never come — and never ask a switched-off camera to stream.
+    // Camera switched off: fail at once instead of waiting ~30s for a stream
+    // that will never come, and never ask a switched-off camera to stream.
+    // Debug level: the Home app retries a failed start many times per second
+    // when it has no Manually Disabled characteristic to go by (no HKSV).
     if (this.isCameraOff) {
-      this.log.info(`[${this.cameraName}] Live view requested, but the camera is switched off`);
+      this.log.debug(`[${this.cameraName}] Live view requested, but the camera is switched off`);
       this.pendingSessions.delete(request.sessionID);
       callback(new Error('Camera is switched off'));
       return;
