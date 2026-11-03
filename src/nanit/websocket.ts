@@ -658,10 +658,24 @@ export class NanitWebSocketClient {
     }
 
     try {
+      await this.getSettings();
+    } catch (err) {
+      this.log.debug('Failed to get initial settings:', err);
+    }
+
+    try {
       await this.enableSensorPush();
     } catch (err) {
       this.log.debug('Failed to enable sensor push:', err);
     }
+  }
+
+  /**
+   * Reads the camera's settings. The response goes through processSettings like a
+   * pushed PUT_SETTINGS, so currentState (sleepMode among others) is up to date after it.
+   */
+  async getSettings(): Promise<void> {
+    await this.sendRequest('GET_SETTINGS', { getSettings: { all: true } });
   }
 
   private async enableSensorPush(): Promise<void> {
