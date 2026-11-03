@@ -236,6 +236,12 @@ message GetStatus {
   optional bool all = 1;
 }
 
+// Without it the camera answers GET_SETTINGS with 400 "missed 'getsettings' field".
+// Field 6 of Request, found by probing a camera on firmware 23.1.20.
+message GetSettings {
+  optional bool all = 1;
+}
+
 message GetAudioStreaming {
   optional bool all = 1;
 }
@@ -256,6 +262,7 @@ message Request {
   required RequestType type = 2;
   optional Streaming streaming = 4;
   optional Settings settings = 5;
+  optional GetSettings getSettings = 6;
   optional Status status = 7;
   optional GetStatus getStatus = 8;
   optional GetSensorData getSensorData = 12;
