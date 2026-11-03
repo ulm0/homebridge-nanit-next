@@ -243,8 +243,8 @@ export class NanitPrebuffer {
       }
     });
 
-    // FFmpeg spawned successfully — reset the backoff counter
-    this.restartAttempt = 0;
+    // The backoff counter resets on the first media fragment (pushSegment), not here:
+    // an FFmpeg that spawns and dies on a dead URL would otherwise retry every 10 s forever.
     this.parseFMp4Stream(proc);
   }
 
@@ -377,6 +377,7 @@ export class NanitPrebuffer {
   }
 
   private pushSegment(data: Buffer): void {
+    this.restartAttempt = 0;
     const segment: FMp4Segment = { data, timestamp: Date.now() };
 
     // Keep only the last HKSV_PREBUFFER_MS worth of segments
