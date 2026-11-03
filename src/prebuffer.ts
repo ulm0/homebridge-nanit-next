@@ -14,6 +14,8 @@ export interface FMp4Segment {
 const RESTART_DELAYS_MS = [10_000, 30_000, 60_000, 120_000];
 const WS_WAIT_POLL_MS = 2_000;
 const WS_WAIT_MAX_MS = 30_000;
+// How often to re-read the camera's settings while it is in sleep mode
+const SLEEP_RECHECK_MS = 300_000;
 
 /**
  * Reads an fMP4 stream from FFmpeg stdout and splits it into ISO BMFF boxes.
@@ -28,6 +30,8 @@ export class NanitPrebuffer {
   private destroyed = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartAttempt = 0;
+  private sleepTimer: ReturnType<typeof setTimeout> | null = null;
+  private pausedForSleep = false;
   private config: CameraRecordingConfiguration | undefined;
 
   private readonly videoProcessor: string;
@@ -41,6 +45,17 @@ export class NanitPrebuffer {
     private readonly debug: boolean = false,
   ) {
     this.videoProcessor = findFfmpeg();
+
+    // While paused for sleep mode, a pushed PUT_SETTINGS turning it off resumes at once
+    wsClient.onStateChange((partial) => {
+      if (partial.sleepMode === false && this.sleepTimer) {
+        clearTimeout(this.sleepTimer);
+        this.sleepTimer = null;
+        this.launchFfmpeg().catch(err => {
+          this.log.error(`[${this.cameraName}] Prebuffer unexpected error on wake:`, err);
+        });
+      }
+    });
   }
 
   setRecordingConfiguration(config: CameraRecordingConfiguration | undefined): void {
@@ -91,6 +106,11 @@ export class NanitPrebuffer {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
     }
+    if (this.sleepTimer) {
+      clearTimeout(this.sleepTimer);
+      this.sleepTimer = null;
+    }
+    this.pausedForSleep = false;
   }
 
   destroy(): void {
@@ -106,6 +126,29 @@ export class NanitPrebuffer {
     // This avoids the first-launch race where the WS is still connecting.
     const wsReady = await this.waitForWsConnection();
     if (!wsReady || this.destroyed || !this.active) return;
+
+    // A camera in sleep mode (turned off in the Nanit app) answers every stream request
+    // with 403 "Number of Mobile App connections above limit": wait for it instead of asking.
+    if (await this.cameraIsAsleep()) {
+      if (this.destroyed || !this.active) return;
+      if (!this.pausedForSleep) {
+        this.pausedForSleep = true;
+        this.log.info(`[${this.cameraName}] Camera is off (sleep mode): HKSV prebuffer paused until it is turned on`);
+      }
+      this.sleepTimer = setTimeout(() => {
+        this.sleepTimer = null;
+        this.launchFfmpeg().catch(err => {
+          this.log.error(`[${this.cameraName}] Prebuffer unexpected error on sleep re-check:`, err);
+        });
+      }, SLEEP_RECHECK_MS);
+      return;
+    }
+    if (this.destroyed || !this.active) return;
+    if (this.pausedForSleep) {
+      this.pausedForSleep = false;
+      this.restartAttempt = 0;
+      this.log.info(`[${this.cameraName}] Camera is on again: resuming HKSV prebuffer`);
+    }
 
     let streamUrl: string;
     try {
@@ -234,6 +277,18 @@ export class NanitPrebuffer {
     // Case 3: trigger a new negotiation
     const info = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
     return info.url;
+  }
+
+  /**
+   * Re-reads the camera's settings (best effort) and reports whether it is in sleep mode.
+   */
+  private async cameraIsAsleep(): Promise<boolean> {
+    try {
+      await this.wsClient.getSettings();
+    } catch (err) {
+      this.log.debug(`[${this.cameraName}] Prebuffer: could not read camera settings:`, err);
+    }
+    return this.wsClient.currentState.sleepMode === true;
   }
 
   /**
