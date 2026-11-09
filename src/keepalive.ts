@@ -36,8 +36,8 @@ export class NanitStreamKeepAlive {
     private readonly babyUid: string,
     private readonly streamResolver: StreamResolver,
     private readonly wsClient: NanitWebSocketClient,
-    /** True while a HomeKit live view runs on the cloud stream. */
-    private readonly hasCloudLiveView: () => boolean = () => false,
+    /** True while a HomeKit live view runs on the cloud stream or is still starting. */
+    private readonly hasCloudOrStartingLiveView: () => boolean = () => false,
   ) {}
 
   get isActive(): boolean {
@@ -136,21 +136,23 @@ export class NanitStreamKeepAlive {
     // No WebSocket: nothing to ask. The state-change listener retries on connect.
     if (!this.wsClient.isConnected) return;
 
-    // A live view runs on the cloud stream (auto mode): negotiating now
-    // would stop it. The watchdog tries again after the view ends. A local
-    // view whose publisher dropped is not affected and recovers here.
-    if (this.hasCloudLiveView()) return;
+    // A live view runs on the cloud stream (auto mode), or is still starting
+    // and may end up there: negotiating now would stop it. The watchdog
+    // tries again after the view ends. A local view whose publisher dropped
+    // is not affected and recovers here.
+    if (this.hasCloudOrStartingLiveView()) return;
 
     this.inFlight = true;
     try {
       // Serialized with live-view negotiation inside the resolver, so this
       // never races a concurrent stop/start sequence. The abort check runs
-      // when the queued negotiation starts and before each retry, so a camera
-      // switched off while this request waited in the queue is not asked.
+      // before every request to the camera, so a camera switched off, or a
+      // live view that started on the cloud stream, while this request waited
+      // in the queue is left alone.
       await this.streamResolver.ensureLocalStream(
         this.babyUid,
         this.wsClient,
-        () => !this.active || this.isCameraOff,
+        () => !this.active || this.isCameraOff || this.hasCloudOrStartingLiveView(),
       );
       if (this.attempt > 0) {
         this.log.info(`[${this.cameraName}] Keep-alive: local stream is up again`);
@@ -161,6 +163,10 @@ export class NanitStreamKeepAlive {
     } catch (err) {
       if (!this.active || this.isCameraOff) {
         this.log.debug(`[${this.cameraName}] Keep-alive: negotiation cancelled, camera is off`);
+        return;
+      }
+      if (this.hasCloudOrStartingLiveView()) {
+        this.log.debug(`[${this.cameraName}] Keep-alive: negotiation cancelled, a live view owns the camera`);
         return;
       }
       const delayMs = RETRY_DELAYS_MS[Math.min(this.attempt, RETRY_DELAYS_MS.length - 1)];

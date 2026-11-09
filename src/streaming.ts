@@ -63,6 +63,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly videoProcessor: string;
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
+  /** Sessions between the start request and the choice of their source. */
+  private readonly startingSessions = new Set<string>();
   private cachedSnapshot: Buffer | null = null;
 
   private readonly maxWidth: number;
@@ -80,8 +82,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
    */
   shouldKeepCameraStreaming: (() => boolean) | undefined;
 
-  /** True while a HomeKit live view runs on the cloud stream. */
-  get hasCloudSessions(): boolean {
+  /**
+   * True while a HomeKit live view runs on the cloud stream, or is still
+   * choosing its source and may end up there.
+   */
+  get hasCloudOrStartingSessions(): boolean {
+    if (this.startingSessions.size > 0) return true;
     for (const session of this.ongoingSessions.values()) {
       if (session.source === 'cloud') return true;
     }
@@ -278,10 +284,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    this.startingSessions.add(request.sessionID);
     let streamInfo;
     try {
       streamInfo = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
     } catch (err) {
+      this.startingSessions.delete(request.sessionID);
       this.log.error(`[${this.cameraName}] Failed to get stream source:`, err);
       callback(err as Error);
       return;
@@ -390,6 +398,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     }
 
     this.ongoingSessions.set(request.sessionID, activeSession);
+    this.startingSessions.delete(request.sessionID);
     this.pendingSessions.delete(request.sessionID);
     callback();
   }
