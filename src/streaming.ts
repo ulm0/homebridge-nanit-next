@@ -333,6 +333,16 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    // The camera may have been switched off while the stream was negotiated.
+    // The session is not in ongoingSessions yet, so the state listener could
+    // not end it; fail the start here instead of launching FFmpeg.
+    if (this.isCameraOff) {
+      this.log.debug(`[${this.cameraName}] Camera switched off while the live view was being prepared`);
+      this.pendingSessions.delete(request.sessionID);
+      callback(new Error('Camera is switched off'));
+      return;
+    }
+
     const vcodec = 'libx264';
     const mtu = 1316;
 
