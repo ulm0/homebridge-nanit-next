@@ -17,8 +17,12 @@ const IGNORED_IFACE_PREFIXES = [
 export class StreamResolver {
   private rtmpServer: LocalRtmpServer;
   private readonly configuredAddress?: string;
-  /** Serializes concurrent local stream negotiation to avoid competing stop/start sequences. */
-  private negotiationLock: Promise<StreamInfo> | null = null;
+  /**
+   * Serializes local stream negotiation per camera, so two stop/start
+   * sequences never compete for the same camera. One camera's negotiation
+   * never holds up another camera's.
+   */
+  private readonly negotiationLocks = new Map<string, Promise<StreamInfo>>();
 
   constructor(
     private readonly log: Logging,
@@ -43,9 +47,9 @@ export class StreamResolver {
     this.rtmpServer.addAllowedIp(ip);
   }
 
-  /** True when a local stream negotiation (stop/start/wait) is currently in progress. */
-  get isNegotiating(): boolean {
-    return this.negotiationLock !== null;
+  /** True when a local stream negotiation (stop/start/wait) for `babyUid` is in progress. */
+  isNegotiating(babyUid: string): boolean {
+    return this.negotiationLocks.has(babyUid);
   }
 
   async getStreamSource(
@@ -109,22 +113,28 @@ export class StreamResolver {
     wsClient: NanitWebSocketClient,
     shouldAbort?: () => boolean,
   ): Promise<StreamInfo> {
-    // If a negotiation is already in-flight for any stream, chain behind it
-    // so we never have two concurrent stop/start sequences.
-    const prev = this.negotiationLock ?? Promise.resolve(null);
+    // An already active stream needs no negotiation and asks the camera
+    // nothing, so it is handed out without waiting behind the queue.
+    if (this.rtmpServer.isRunning && this.rtmpServer.isStreamActive(babyUid)) {
+      return this.getLocalStream(babyUid, wsClient, shouldAbort);
+    }
+
+    // If a negotiation is already in flight for this camera, chain behind it
+    // so we never have two concurrent stop/start sequences for one camera.
+    const prev = this.negotiationLocks.get(babyUid) ?? Promise.resolve(null);
     const next = prev
       .catch(() => null)
       .then(() => this.getLocalStream(babyUid, wsClient, shouldAbort));
 
-    this.negotiationLock = next;
+    this.negotiationLocks.set(babyUid, next);
 
-    // Clear the lock reference once this attempt settles so future independent
-    // calls start fresh. Use a separate .then/.catch to avoid creating an
+    // Clear the lock once this attempt settles so future independent calls
+    // start fresh. Use a separate .then/.catch to avoid creating an
     // additional unhandled-rejection branch on `next` itself.
-    next.then(
-      () => { if (this.negotiationLock === next) this.negotiationLock = null; },
-      () => { if (this.negotiationLock === next) this.negotiationLock = null; },
-    );
+    const clear = () => {
+      if (this.negotiationLocks.get(babyUid) === next) this.negotiationLocks.delete(babyUid);
+    };
+    next.then(clear, clear);
 
     return next;
   }

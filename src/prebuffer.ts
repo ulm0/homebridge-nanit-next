@@ -222,9 +222,9 @@ export class NanitPrebuffer {
       return activeUrl;
     }
 
-    // Case 2: a live stream negotiation is in-flight — wait for the RTMP stream
-    // to start publishing instead of issuing a competing stop/start.
-    if (this.streamResolver.isNegotiating) {
+    // Case 2: a live stream negotiation for this camera is in flight — wait for
+    // the RTMP stream to start publishing instead of issuing a competing stop/start.
+    if (this.streamResolver.isNegotiating(this.babyUid)) {
       this.log.debug(`[${this.cameraName}] Prebuffer: stream negotiation in progress, waiting for RTMP stream`);
       const url = await this.streamResolver.waitForActiveStream(this.babyUid, 30_000);
       if (url) return url;
