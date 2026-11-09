@@ -166,9 +166,6 @@ export class StreamResolver {
     wsClient: NanitWebSocketClient,
     shouldAbort?: () => boolean,
   ): Promise<StreamInfo> {
-    if (shouldAbort?.()) {
-      throw new Error('Local stream negotiation cancelled');
-    }
     if (!this.rtmpServer.isRunning) {
       await this.rtmpServer.start();
     }
@@ -178,6 +175,13 @@ export class StreamResolver {
     const rtmpUrl = this.rtmpServer.getLocalRtmpUrl(streamKey, localAddress);
 
     if (!this.rtmpServer.isStreamActive(streamKey)) {
+      // An already active stream is handed out without asking the camera
+      // anything, so the abort check only matters from here on. It runs
+      // before every request to the camera: the stop below can wait up to
+      // 10 s, and each attempt waits 15 s for the publish.
+      if (shouldAbort?.()) {
+        throw new Error('Local stream negotiation cancelled');
+      }
       try {
         await wsClient.stopStreaming();
       } catch {
@@ -186,7 +190,7 @@ export class StreamResolver {
 
       let ready = false;
       for (let attempt = 1; attempt <= StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS; attempt++) {
-        if (attempt > 1 && shouldAbort?.()) {
+        if (shouldAbort?.()) {
           throw new Error('Local stream negotiation cancelled');
         }
         this.log.debug(`Requesting camera to publish locally (attempt ${attempt}/${StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS})...`);
