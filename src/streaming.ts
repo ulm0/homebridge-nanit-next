@@ -211,7 +211,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
       if (snapshot && snapshot.length > 0) {
         this.cachedSnapshot = snapshot;
-        callback(undefined, snapshot);
+        callback(undefined, await this.snapshotForHomeKit(snapshot));
         return;
       }
     } catch (err) {
@@ -226,7 +226,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
         const frame = await captureSnapshot(this.videoProcessor, localPlayUrl, width, height);
         if (frame && frame.length > 0) {
           this.cachedSnapshot = frame;
-          callback(undefined, frame);
+          callback(undefined, await this.snapshotForHomeKit(frame));
           return;
         }
       } catch (err) {
@@ -237,12 +237,22 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     // 3. Return the last cached snapshot if available
     if (this.cachedSnapshot) {
       this.log.debug(`[${this.cameraName}] Using cached snapshot`);
-      callback(undefined, this.cachedSnapshot);
+      callback(undefined, await this.snapshotForHomeKit(this.cachedSnapshot));
       return;
     }
 
     this.log.debug(`[${this.cameraName}] No snapshot available`);
     callback(new Error('No snapshot available'));
+  }
+
+  /**
+   * The image to hand HomeKit for a snapshot that was fetched while the
+   * camera was on: the image itself, or the dark frame when the camera was
+   * switched off in the meantime. The real image stays cached either way.
+   */
+  private async snapshotForHomeKit(image: Buffer): Promise<Buffer> {
+    if (!this.isCameraOff) return image;
+    return (await this.getCameraOffSnapshot()) ?? image;
   }
 
   async prepareStream(request: PrepareStreamRequest, callback: PrepareStreamCallback): Promise<void> {
