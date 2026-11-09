@@ -107,7 +107,7 @@ export class NanitCameraAccessory {
         cameraInfo.babyUid,
         streamResolver,
         wsClient,
-        () => this.streamingDelegate.hasCloudOrStartingSessions,
+        () => this.streamingDelegate.hasCloudOrStartingSessions || (this.prebuffer?.usesCloudStream ?? false),
       );
     }
 

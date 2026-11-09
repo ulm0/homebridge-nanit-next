@@ -36,7 +36,10 @@ export class NanitStreamKeepAlive {
     private readonly babyUid: string,
     private readonly streamResolver: StreamResolver,
     private readonly wsClient: NanitWebSocketClient,
-    /** True while a HomeKit live view runs on the cloud stream or is still starting. */
+    /**
+     * True while a HomeKit live view or the HKSV prebuffer runs on the cloud
+     * stream, or a live view is still starting and may end up there.
+     */
     private readonly hasCloudOrStartingLiveView: () => boolean = () => false,
   ) {}
 
@@ -136,10 +139,10 @@ export class NanitStreamKeepAlive {
     // No WebSocket: nothing to ask. The state-change listener retries on connect.
     if (!this.wsClient.isConnected) return;
 
-    // A live view runs on the cloud stream (auto mode), or is still starting
-    // and may end up there: negotiating now would stop it. The watchdog
-    // tries again after the view ends. A local view whose publisher dropped
-    // is not affected and recovers here.
+    // A live view or the HKSV prebuffer runs on the cloud stream (auto mode),
+    // or a live view is still starting and may end up there: negotiating now
+    // would stop it. The watchdog tries again after it ends. A local view
+    // whose publisher dropped is not affected and recovers here.
     if (this.hasCloudOrStartingLiveView()) return;
 
     this.inFlight = true;
@@ -166,7 +169,7 @@ export class NanitStreamKeepAlive {
         return;
       }
       if (this.hasCloudOrStartingLiveView()) {
-        this.log.debug(`[${this.cameraName}] Keep-alive: negotiation cancelled, a live view owns the camera`);
+        this.log.debug(`[${this.cameraName}] Keep-alive: negotiation cancelled, a cloud stream consumer owns the camera`);
         return;
       }
       const delayMs = RETRY_DELAYS_MS[Math.min(this.attempt, RETRY_DELAYS_MS.length - 1)];
