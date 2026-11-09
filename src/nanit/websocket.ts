@@ -620,47 +620,49 @@ export class NanitWebSocketClient {
   }
 
   private async requestInitialState(): Promise<void> {
-    // On local WS, the camera blasts a full state burst on connect, then drops
-    // the channel ~1s later (firmware behavior — cloud is the master control
-    // channel). Don't initiate any GETs locally; just consume the burst.
-    if (this.connectionMode === 'local') {
-      this.log.debug('Local WS: skipping initial GETs (passive observer only)');
-      return;
+    // On a local WebSocket the camera sends its settings on connect, so the
+    // GETs below are not needed there. (Some firmware was seen to drop the
+    // local channel about a second after connect; on a Nanit Pro with
+    // firmware 6.58.x it stays up for hours and accepts requests.)
+    if (this.connectionMode !== 'local') {
+      try {
+        await this.sendRequest('GET_SENSOR_DATA', {
+          getSensorData: { all: true },
+        });
+      } catch (err) {
+        this.log.debug('Failed to get initial sensor data:', err);
+      }
+
+      try {
+        this.sendRaw({
+          type: 'REQUEST',
+          request: {
+            id: ++this.requestId,
+            type: 'GET_CONTROL',
+            getControl: { all: true },
+          },
+        });
+      } catch (err) {
+        this.log.debug('Failed to request initial control state:', err);
+      }
+
+      try {
+        await this.sendRequest('GET_STATUS', {
+          getStatus: { all: true },
+        });
+      } catch (err) {
+        this.log.debug('Failed to get initial status:', err);
+      }
     }
 
-    try {
-      await this.sendRequest('GET_SENSOR_DATA', {
-        getSensorData: { all: true },
-      });
-    } catch (err) {
-      this.log.debug('Failed to get initial sensor data:', err);
-    }
-
-    try {
-      this.sendRaw({
-        type: 'REQUEST',
-        request: {
-          id: ++this.requestId,
-          type: 'GET_CONTROL',
-          getControl: { all: true },
-        },
-      });
-    } catch (err) {
-      this.log.debug('Failed to request initial control state:', err);
-    }
-
-    try {
-      await this.sendRequest('GET_STATUS', {
-        getStatus: { all: true },
-      });
-    } catch (err) {
-      this.log.debug('Failed to get initial status:', err);
-    }
-
+    // The camera pushes sensor data, and with it motion, only when asked.
+    // That holds on the local channel too: without this request no motion
+    // ever reaches HomeKit on a local-only setup.
     try {
       await this.enableSensorPush();
+      this.log.debug(`Sensor push enabled on ${this.connectionMode} WebSocket`);
     } catch (err) {
-      this.log.debug('Failed to enable sensor push:', err);
+      this.log.warn(`Failed to enable sensor push on ${this.connectionMode} WebSocket:`, err);
     }
   }
 
