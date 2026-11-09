@@ -283,6 +283,10 @@ export class NanitPrebuffer {
     let moovReceived = false;
 
     proc.stdout?.on('data', (chunk: Buffer) => {
+      // A process that was killed (pause, stop) or superseded by a newer
+      // launch keeps writing until it exits, up to three seconds later. Its
+      // output must not reach the buffers the current process fills.
+      if (this.ffmpeg !== proc) return;
       buf = Buffer.concat([buf, chunk]);
 
       while (buf.length >= 8) {
