@@ -78,6 +78,11 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
    */
   shouldKeepCameraStreaming: (() => boolean) | undefined;
 
+  /** True while at least one HomeKit live-view session is open. */
+  get hasActiveSessions(): boolean {
+    return this.ongoingSessions.size > 0;
+  }
+
   constructor(
     private readonly log: Logging,
     private readonly hap: HAP,

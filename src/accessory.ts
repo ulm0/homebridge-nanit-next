@@ -107,6 +107,7 @@ export class NanitCameraAccessory {
         cameraInfo.babyUid,
         streamResolver,
         wsClient,
+        () => this.streamingDelegate.hasActiveSessions,
       );
     }
 
