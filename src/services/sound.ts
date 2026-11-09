@@ -12,6 +12,8 @@ export class SoundMachineService {
   private readonly service: Service;
   private isPlaying = false;
   private volume = 50;
+  /** Counts On/Off writes, so a write that waited for the camera knows when a newer one has overtaken it. */
+  private lastSetRequest = 0;
 
   constructor(
     private readonly accessory: NanitCameraAccessory,
@@ -68,14 +70,19 @@ export class SoundMachineService {
 
   private async setOn(value: CharacteristicValue): Promise<void> {
     const on = value as boolean;
+    const request = ++this.lastSetRequest;
     this.log.debug(`Setting sound machine: ${on}`);
     try {
       if (on) {
         await this.waitForCameraOn();
+        // A newer On/Off write arrived while this one waited: that write is
+        // the current wish, so this one does nothing more.
+        if (request !== this.lastSetRequest) return;
         await this.wsClient.startPlayback();
       } else {
         await this.wsClient.stopPlayback();
       }
+      if (request !== this.lastSetRequest) return;
       this.isPlaying = on;
     } catch (err) {
       this.log.error('Failed to set sound machine:', err);
