@@ -127,6 +127,9 @@ export class NanitPrebuffer {
     try {
       streamUrl = await this.resolveStreamUrl();
     } catch (err) {
+      // A launch overtaken by a pause or a newer launch owns no retry: the
+      // newer launch is running, and a retry here would start a second FFmpeg.
+      if (this.destroyed || !this.active || generation !== this.launchGeneration) return;
       this.log.warn(`[${this.cameraName}] Prebuffer: failed to get stream source, will retry:`, err);
       this.scheduleRestart();
       return;
