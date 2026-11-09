@@ -229,7 +229,7 @@ export class NanitPlatform implements DynamicPlatformPlugin {
         existingAccessory.context.cameraInfo = cameraInfo;
         this.cameraAccessories.push(new NanitCameraAccessory(
           this, existingAccessory, this.log, cameraInfo,
-          wsClient, this.nanitApi, this.streamResolver, this.pluginConfig,
+          wsClient, this.nanitApi, this.streamResolver, this.pluginConfig, cameraConfig,
         ));
       } else {
         this.log.info('Adding new accessory:', displayName);
@@ -239,7 +239,7 @@ export class NanitPlatform implements DynamicPlatformPlugin {
 
         this.cameraAccessories.push(new NanitCameraAccessory(
           this, accessory, this.log, cameraInfo,
-          wsClient, this.nanitApi, this.streamResolver, this.pluginConfig,
+          wsClient, this.nanitApi, this.streamResolver, this.pluginConfig, cameraConfig,
         ));
 
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);

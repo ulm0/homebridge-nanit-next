@@ -4,7 +4,7 @@ import type { NanitWebSocketClient } from './nanit/websocket.js';
 import type { NanitApiClient } from './nanit/api.js';
 import type { StreamResolver } from './stream/resolver.js';
 import type { CameraInfo } from './nanit/types.js';
-import type { NanitPlatformConfig } from './settings.js';
+import type { NanitPlatformConfig, CameraConfig } from './settings.js';
 import { HKSV_RECORDING_OPTIONS } from './settings.js';
 import { NanitStreamingDelegate } from './streaming.js';
 import { NightLightService } from './services/light.js';
@@ -34,6 +34,8 @@ export class NanitCameraAccessory {
     private readonly nanitApi: NanitApiClient,
     private readonly streamResolver: StreamResolver,
     private readonly config: NanitPlatformConfig,
+    /** The `cameras` entry the platform resolved for this camera, by babyUid or by auto-association. */
+    private readonly cameraConfig?: CameraConfig,
   ) {
     const { Characteristic, Service } = platform;
 
@@ -105,13 +107,25 @@ export class NanitCameraAccessory {
 
     this.accessory.configureController(this.streamingDelegate.controller);
 
-    const cameraConfig = config.cameras?.find(c => c.babyUid === cameraInfo.babyUid);
     const enableLight = cameraConfig?.enableLight ?? true;
     const enableSound = cameraConfig?.enableSound ?? true;
     const enableSensors = cameraConfig?.enableSensors ?? true;
 
+    // Homebridge restores every service from its cache. A service whose
+    // feature the config disables has to be removed here, or it stays in
+    // HomeKit. The toggle switches do the same for themselves.
+    const removeCached = (names: string[]) => {
+      for (const name of names) {
+        const stale = accessory.getService(name);
+        if (stale) accessory.removeService(stale);
+      }
+    };
+    const trackNames = ['Sound: Birds', 'Sound: Waves', 'Sound: White Noise', 'Sound: Wind'];
+
     if (enableLight) {
       this.nightLightService = new NightLightService(this, log, wsClient);
+    } else {
+      removeCached(['Night Light']);
     }
 
     if (enableSound) {
@@ -119,17 +133,17 @@ export class NanitCameraAccessory {
       const enableTrackSwitches = cameraConfig?.enableSoundTracks ?? true;
       if (enableTrackSwitches) {
         this.soundTrackServices = new SoundTrackServices(this, log, wsClient);
+      } else {
+        removeCached(trackNames);
       }
     } else {
-      // If sound disabled, also strip any cached track switches
-      for (const name of ['Sound: Birds', 'Sound: Waves', 'Sound: White Noise', 'Sound: Wind']) {
-        const stale = accessory.getService(name);
-        if (stale) accessory.removeService(stale);
-      }
+      removeCached(['Sound Machine', ...trackNames]);
     }
 
     if (enableSensors) {
       this.sensorServices = new SensorServices(this, log, wsClient);
+    } else {
+      removeCached(['Temperature', 'Humidity']);
     }
 
     this.cameraToggles = new CameraToggleServices(this, log, wsClient, {
