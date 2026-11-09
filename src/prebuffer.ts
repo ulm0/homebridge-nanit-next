@@ -212,9 +212,11 @@ export class NanitPrebuffer {
     });
 
     proc.on('close', (code) => {
-      if (this.ffmpeg === proc) {
-        this.ffmpeg = null;
-      }
+      // A process that is no longer the current one was killed on purpose
+      // (pause, stop) or superseded by a newer launch; only the current
+      // process's exit is unexpected and earns a restart.
+      if (this.ffmpeg !== proc) return;
+      this.ffmpeg = null;
       if (this.active && !this.destroyed && !this.pausedForSleep) {
         this.log.warn(`[${this.cameraName}] Prebuffer FFmpeg exited (code=${code}), restarting...`);
         this.scheduleRestart();
