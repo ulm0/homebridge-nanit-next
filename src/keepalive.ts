@@ -36,8 +36,8 @@ export class NanitStreamKeepAlive {
     private readonly babyUid: string,
     private readonly streamResolver: StreamResolver,
     private readonly wsClient: NanitWebSocketClient,
-    /** True while a HomeKit live view is open. */
-    private readonly hasActiveLiveView: () => boolean = () => false,
+    /** True while a HomeKit live view runs on the cloud stream. */
+    private readonly hasCloudLiveView: () => boolean = () => false,
   ) {}
 
   get isActive(): boolean {
@@ -136,10 +136,10 @@ export class NanitStreamKeepAlive {
     // No WebSocket: nothing to ask. The state-change listener retries on connect.
     if (!this.wsClient.isConnected) return;
 
-    // A live view is open but no local stream is active: that view runs on
-    // the cloud stream (auto mode). Negotiating now would stop it. The
-    // watchdog tries again after the view ends.
-    if (this.hasActiveLiveView()) return;
+    // A live view runs on the cloud stream (auto mode): negotiating now
+    // would stop it. The watchdog tries again after the view ends. A local
+    // view whose publisher dropped is not affected and recovers here.
+    if (this.hasCloudLiveView()) return;
 
     this.inFlight = true;
     try {

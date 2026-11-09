@@ -49,6 +49,8 @@ interface SessionInfo {
 }
 
 interface ActiveSession {
+  /** Where the camera sends this view's video: the local RTMP server or Nanit's cloud. */
+  source: 'local' | 'cloud';
   mainProcess?: FfmpegProcess;
   returnProcess?: FfmpegProcess;
   timeout?: ReturnType<typeof setTimeout>;
@@ -78,9 +80,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
    */
   shouldKeepCameraStreaming: (() => boolean) | undefined;
 
-  /** True while at least one HomeKit live-view session is open. */
-  get hasActiveSessions(): boolean {
-    return this.ongoingSessions.size > 0;
+  /** True while a HomeKit live view runs on the cloud stream. */
+  get hasCloudSessions(): boolean {
+    for (const session of this.ongoingSessions.values()) {
+      if (session.source === 'cloud') return true;
+    }
+    return false;
   }
 
   constructor(
@@ -349,7 +354,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     ffmpegArgs.push('-progress', 'pipe:1');
 
-    const activeSession: ActiveSession = {};
+    const activeSession: ActiveSession = { source: streamInfo.type };
 
     // RTCP feedback socket for stream health monitoring
     activeSession.socket = createSocket(sessionInfo.ipv6 ? 'udp6' : 'udp4');
