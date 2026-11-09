@@ -23,6 +23,7 @@ import {
   AudioStreamingSamplerate,
   StreamRequestTypes,
 } from 'homebridge';
+import { execFile } from 'node:child_process';
 import { createSocket, type Socket } from 'node:dgram';
 import { pickPort } from 'pick-port';
 import { FfmpegProcess, findFfmpeg, detectAacEncoder, captureSnapshot } from './utils.js';
@@ -62,6 +63,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
   private cachedSnapshot: Buffer | null = null;
+  /** Dark placeholder shown while the camera is switched off; rendered once, lazily. */
+  private cameraOffSnapshot: Promise<Buffer | null> | null = null;
 
   private readonly maxWidth: number;
   private readonly maxHeight: number;
@@ -102,6 +105,18 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     api.on(APIEvent.SHUTDOWN, () => {
       for (const sessionId of this.ongoingSessions.keys()) {
+        this.stopStream(sessionId);
+      }
+    });
+
+    // Camera switched off: tell HomeKit, and end any live view in progress.
+    wsClient.onStateChange((state) => {
+      if (state.sleepMode === undefined) return;
+      this.publishCameraOff(state.sleepMode);
+      if (state.sleepMode !== true || this.ongoingSessions.size === 0) return;
+      this.log.info(`[${this.cameraName}] Camera switched off, ending live view`);
+      for (const sessionId of [...this.ongoingSessions.keys()]) {
+        this.controller.forceStopStreamingSession(sessionId);
         this.stopStream(sessionId);
       }
     });
@@ -153,16 +168,50 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.controller = new hap.CameraController(options);
   }
 
+  /**
+   * Reports the camera being switched off (Nanit "sleep mode") to HomeKit
+   * through the Camera Operating Mode service's optional Manually Disabled
+   * characteristic, which HomeKit defines for a physical privacy switch.
+   * The Home app then shows the camera as "Off" and does not ask for a
+   * stream or a snapshot; it also turns HKSV recording off and back on by
+   * itself. Without this, the Home app re-sends a failed stream request
+   * about 13 times per second for as long as the live view stays open.
+   *
+   * The service only exists when HKSV recording is configured, and the
+   * characteristic's HAP format is bool. Homebridge persists its value in
+   * the cached accessory, so it survives a restart; it is only sent on a
+   * known camera state, never at construction.
+   */
+  private publishCameraOff(off: boolean): void {
+    const operatingMode = this.controller.recordingManagement?.operatingModeService;
+    if (!operatingMode) return;
+    const characteristic = operatingMode.getCharacteristic(this.hap.Characteristic.ManuallyDisabled);
+    if (characteristic.value === off) return;
+    this.log.info(`[${this.cameraName}] Telling HomeKit the camera is ${off ? 'off' : 'on'}`);
+    characteristic.updateValue(off);
+  }
+
   async handleSnapshotRequest(request: SnapshotRequest, callback: SnapshotRequestCallback): Promise<void> {
     const width = request.width ?? this.maxWidth;
     const height = request.height ?? this.maxHeight;
+
+    // 0. Camera switched off: show a dark frame rather than a stale image.
+    if (this.isCameraOff) {
+      const off = await this.getCameraOffSnapshot();
+      if (off) {
+        callback(undefined, off);
+      } else {
+        callback(new Error('Camera is switched off'));
+      }
+      return;
+    }
 
     // 1. Try the Nanit REST snapshot endpoint
     try {
       const snapshot = await this.nanitApi.getSnapshot(this.babyUid);
       if (snapshot && snapshot.length > 0) {
         this.cachedSnapshot = snapshot;
-        callback(undefined, snapshot);
+        callback(undefined, await this.snapshotForHomeKit(snapshot));
         return;
       }
     } catch (err) {
@@ -177,7 +226,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
         const frame = await captureSnapshot(this.videoProcessor, localPlayUrl, width, height);
         if (frame && frame.length > 0) {
           this.cachedSnapshot = frame;
-          callback(undefined, frame);
+          callback(undefined, await this.snapshotForHomeKit(frame));
           return;
         }
       } catch (err) {
@@ -188,12 +237,22 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     // 3. Return the last cached snapshot if available
     if (this.cachedSnapshot) {
       this.log.debug(`[${this.cameraName}] Using cached snapshot`);
-      callback(undefined, this.cachedSnapshot);
+      callback(undefined, await this.snapshotForHomeKit(this.cachedSnapshot));
       return;
     }
 
     this.log.debug(`[${this.cameraName}] No snapshot available`);
     callback(new Error('No snapshot available'));
+  }
+
+  /**
+   * The image to hand HomeKit for a snapshot that was fetched while the
+   * camera was on: the image itself, or the dark frame when the camera was
+   * switched off in the meantime. The real image stays cached either way.
+   */
+  private async snapshotForHomeKit(image: Buffer): Promise<Buffer> {
+    if (!this.isCameraOff) return image;
+    return (await this.getCameraOffSnapshot()) ?? image;
   }
 
   async prepareStream(request: PrepareStreamRequest, callback: PrepareStreamCallback): Promise<void> {
@@ -264,12 +323,36 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    // Camera switched off: fail at once instead of waiting ~30s for a stream
+    // that will never come, and never ask a switched-off camera to stream.
+    // Debug level: the Home app retries a failed start many times per second
+    // when it has no Manually Disabled characteristic to go by (no HKSV).
+    if (this.isCameraOff) {
+      this.log.debug(`[${this.cameraName}] Live view requested, but the camera is switched off`);
+      this.pendingSessions.delete(request.sessionID);
+      callback(new Error('Camera is switched off'));
+      return;
+    }
+
     let streamInfo;
     try {
       streamInfo = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
     } catch (err) {
       this.log.error(`[${this.cameraName}] Failed to get stream source:`, err);
       callback(err as Error);
+      return;
+    }
+
+    // The camera may have been switched off while the stream was negotiated.
+    // The session is not in ongoingSessions yet, so the state listener could
+    // not end it; fail the start here instead of launching FFmpeg, and send
+    // the camera a stop for the stream just negotiated, unless another live
+    // view or the prebuffer still needs it (stopStream() decides that).
+    if (this.isCameraOff) {
+      this.log.debug(`[${this.cameraName}] Camera switched off while the live view was being prepared`);
+      this.pendingSessions.delete(request.sessionID);
+      this.stopStream(request.sessionID);
+      callback(new Error('Camera is switched off'));
       return;
     }
 
@@ -497,6 +580,37 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     activeSession.stopAudio = () => {
       returnProcess.stop();
     };
+  }
+
+  /** True while the camera is switched off (Nanit "sleep mode"). */
+  private get isCameraOff(): boolean {
+    return this.wsClient.currentState.sleepMode === true;
+  }
+
+  private getCameraOffSnapshot(): Promise<Buffer | null> {
+    if (!this.cameraOffSnapshot) {
+      this.cameraOffSnapshot = new Promise<Buffer | null>((resolve) => {
+        execFile(
+          this.videoProcessor,
+          [
+            '-hide_banner', '-loglevel', 'error',
+            '-f', 'lavfi', '-i', `color=c=0x101012:s=${this.maxWidth}x${this.maxHeight}`,
+            '-frames:v', '1', '-f', 'image2', '-c:v', 'mjpeg', 'pipe:1',
+          ],
+          { encoding: 'buffer', timeout: 5_000 },
+          (err, stdout) => {
+            if (err || stdout.length === 0) {
+              this.log.warn(`[${this.cameraName}] Could not render camera-off snapshot:`, err);
+              this.cameraOffSnapshot = null; // retry next time
+              resolve(null);
+              return;
+            }
+            resolve(stdout);
+          },
+        );
+      });
+    }
+    return this.cameraOffSnapshot;
   }
 
   private stopStream(sessionId: string): void {
