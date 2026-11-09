@@ -86,9 +86,17 @@ export class StreamResolver {
   /**
    * Negotiates (or reuses) a local RTMP stream. Unlike getStreamSource(),
    * this never falls back to the cloud, whatever the stream mode.
+   *
+   * `shouldAbort` is checked when the (possibly queued) negotiation starts
+   * and before each retry; when it returns true the negotiation throws
+   * without sending anything to the camera.
    */
-  ensureLocalStream(babyUid: string, wsClient: NanitWebSocketClient): Promise<StreamInfo> {
-    return this.serializedGetLocalStream(babyUid, wsClient);
+  ensureLocalStream(
+    babyUid: string,
+    wsClient: NanitWebSocketClient,
+    shouldAbort?: () => boolean,
+  ): Promise<StreamInfo> {
+    return this.serializedGetLocalStream(babyUid, wsClient, shouldAbort);
   }
 
   /** Called with the baby UID whenever the camera stops pushing to the local RTMP server. */
@@ -99,13 +107,14 @@ export class StreamResolver {
   private serializedGetLocalStream(
     babyUid: string,
     wsClient: NanitWebSocketClient,
+    shouldAbort?: () => boolean,
   ): Promise<StreamInfo> {
     // If a negotiation is already in-flight for any stream, chain behind it
     // so we never have two concurrent stop/start sequences.
     const prev = this.negotiationLock ?? Promise.resolve(null);
     const next = prev
       .catch(() => null)
-      .then(() => this.getLocalStream(babyUid, wsClient));
+      .then(() => this.getLocalStream(babyUid, wsClient, shouldAbort));
 
     this.negotiationLock = next;
 
@@ -155,7 +164,11 @@ export class StreamResolver {
   private async getLocalStream(
     babyUid: string,
     wsClient: NanitWebSocketClient,
+    shouldAbort?: () => boolean,
   ): Promise<StreamInfo> {
+    if (shouldAbort?.()) {
+      throw new Error('Local stream negotiation cancelled');
+    }
     if (!this.rtmpServer.isRunning) {
       await this.rtmpServer.start();
     }
@@ -173,6 +186,9 @@ export class StreamResolver {
 
       let ready = false;
       for (let attempt = 1; attempt <= StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 1 && shouldAbort?.()) {
+          throw new Error('Local stream negotiation cancelled');
+        }
         this.log.debug(`Requesting camera to publish locally (attempt ${attempt}/${StreamResolver.LOCAL_STREAM_MAX_ATTEMPTS})...`);
         try {
           await wsClient.startStreaming(rtmpUrl);

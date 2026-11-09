@@ -44,6 +44,10 @@ export class NanitStreamKeepAlive {
     return this.active;
   }
 
+  private get isCameraOff(): boolean {
+    return this.wsClient.currentState.sleepMode === true;
+  }
+
   /**
    * True when the camera's current push is one this keep-alive wants kept:
    * the keep-alive runs and the camera publishes to the local RTMP server.
@@ -122,7 +126,7 @@ export class NanitStreamKeepAlive {
     if (!this.active || this.inFlight) return;
 
     // Never ask a switched-off camera to stream.
-    if (this.wsClient.currentState.sleepMode === true) return;
+    if (this.isCameraOff) return;
 
     if (this.streamResolver.getActiveLocalPlayUrl(this.babyUid)) {
       this.attempt = 0;
@@ -140,8 +144,14 @@ export class NanitStreamKeepAlive {
     this.inFlight = true;
     try {
       // Serialized with live-view negotiation inside the resolver, so this
-      // never races a concurrent stop/start sequence.
-      await this.streamResolver.ensureLocalStream(this.babyUid, this.wsClient);
+      // never races a concurrent stop/start sequence. The abort check runs
+      // when the queued negotiation starts and before each retry, so a camera
+      // switched off while this request waited in the queue is not asked.
+      await this.streamResolver.ensureLocalStream(
+        this.babyUid,
+        this.wsClient,
+        () => !this.active || this.isCameraOff,
+      );
       if (this.attempt > 0) {
         this.log.info(`[${this.cameraName}] Keep-alive: local stream is up again`);
       } else {
@@ -149,6 +159,10 @@ export class NanitStreamKeepAlive {
       }
       this.attempt = 0;
     } catch (err) {
+      if (!this.active || this.isCameraOff) {
+        this.log.debug(`[${this.cameraName}] Keep-alive: negotiation cancelled, camera is off`);
+        return;
+      }
       const delayMs = RETRY_DELAYS_MS[Math.min(this.attempt, RETRY_DELAYS_MS.length - 1)];
       this.attempt++;
       this.log.warn(
