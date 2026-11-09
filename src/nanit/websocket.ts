@@ -68,6 +68,17 @@ export class NanitWebSocketClient {
     this.localIp = ip;
   }
 
+  /**
+   * Seeds the sound machine track to use until the camera reports one. The
+   * camera only names its track in playback messages, so after a restart
+   * the plugin would otherwise not know which track to resume.
+   */
+  seedSoundTrack(filename: string): void {
+    if (this.state.soundTrack === undefined) {
+      this.state.soundTrack = filename;
+    }
+  }
+
   onStateChange(listener: CameraStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
