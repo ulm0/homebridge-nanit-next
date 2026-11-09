@@ -46,6 +46,15 @@
           "functionBody": "return model.streamMode !== 'cloud';"
         }
       },
+      "keepStreamAlive": {
+        "title": "Keep Stream Warm",
+        "type": "boolean",
+        "default": false,
+        "description": "Keep the camera pushing its stream to this Homebridge instance at all times, so live view, snapshots and motion notifications start almost instantly. Costs constant Wi-Fi traffic from the camera; nothing is transcoded unless someone is watching. Local/auto mode only.",
+        "condition": {
+          "functionBody": "return model.streamMode !== 'cloud';"
+        }
+      },
       "rtmpListenPort": {
         "title": "RTMP Listen Port",
         "type": "integer",
@@ -199,6 +208,7 @@
       "title": "Streaming",
       "items": [
         "streamMode",
+        "keepStreamAlive",
         "localAddress",
         "rtmpListenPort",
         "enableHksv",

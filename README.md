@@ -150,6 +150,7 @@ Authentication is handled via the UI wizard. No credentials need to be in the co
 | `streamMode` | string | `auto` | `auto`, `local`, or `cloud` |
 | `rtmpListenPort` | number | auto | Port for local RTMP server |
 | `localAddress` | string | auto | Homebridge host LAN IP (only required if auto-detect picks the wrong NIC) |
+| `keepStreamAlive` | boolean | `false` | Keep the camera pushing to the local RTMP server at all times, for near-instant live view and current snapshots. Local/auto mode only |
 | `enableHksv` | boolean | `false` | Enable HomeKit Secure Video (experimental) |
 | `enableTalkback` | boolean | `false` | Enable legacy RTSP ANNOUNCE talk-back. Pro firmware unsupported — leave off |
 | `auth.refreshToken` | string | — | Manual refresh token (alternative to UI wizard) |

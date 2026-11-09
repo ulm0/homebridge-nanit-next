@@ -30,6 +30,12 @@ export interface NanitPlatformConfig {
   streamMode?: StreamMode;
   rtmpListenPort?: number;
   localAddress?: string;
+  /**
+   * Keep the camera pushing to the local RTMP server at all times, so live
+   * view attaches to an already-running stream instead of cold-starting it.
+   * Local/auto mode only; never keeps a cloud stream open.
+   */
+  keepStreamAlive?: boolean;
   enableHksv?: boolean;
   enableTalkback?: boolean;
   cameras?: Array<{

@@ -28,6 +28,8 @@ export class NanitPrebuffer {
   private destroyed = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartAttempt = 0;
+  /** Where the running prebuffer FFmpeg reads from; null while it is not running. */
+  private streamSource: 'local' | 'cloud' | null = null;
   private config: CameraRecordingConfiguration | undefined;
 
   private readonly videoProcessor: string;
@@ -45,6 +47,11 @@ export class NanitPrebuffer {
 
   setRecordingConfiguration(config: CameraRecordingConfiguration | undefined): void {
     this.config = config;
+  }
+
+  /** True while the prebuffer reads the cloud stream (auto mode, local negotiation failed). */
+  get usesCloudStream(): boolean {
+    return this.streamSource === 'cloud';
   }
 
   get isActive(): boolean {
@@ -109,7 +116,9 @@ export class NanitPrebuffer {
 
     let streamUrl: string;
     try {
-      streamUrl = await this.resolveStreamUrl();
+      const source = await this.resolveStreamUrl();
+      streamUrl = source.url;
+      this.streamSource = source.type;
     } catch (err) {
       this.log.warn(`[${this.cameraName}] Prebuffer: failed to get stream source, will retry:`, err);
       this.scheduleRestart();
@@ -193,6 +202,7 @@ export class NanitPrebuffer {
     proc.on('close', (code) => {
       if (this.ffmpeg === proc) {
         this.ffmpeg = null;
+        this.streamSource = null;
       }
       if (this.active && !this.destroyed) {
         this.log.warn(`[${this.cameraName}] Prebuffer FFmpeg exited (code=${code}), restarting...`);
@@ -214,26 +224,26 @@ export class NanitPrebuffer {
    *    wait for the RTMP stream to become active rather than competing.
    * 3. Otherwise, trigger a new negotiation through the serialized lock.
    */
-  private async resolveStreamUrl(): Promise<string> {
+  private async resolveStreamUrl(): Promise<{ url: string; type: 'local' | 'cloud' }> {
     // Case 1: stream is already publishing
     const activeUrl = this.streamResolver.getActiveStreamUrl(this.babyUid);
     if (activeUrl) {
       this.log.debug(`[${this.cameraName}] Prebuffer: reusing existing active stream`);
-      return activeUrl;
+      return { url: activeUrl, type: 'local' };
     }
 
-    // Case 2: a live stream negotiation is in-flight — wait for the RTMP stream
-    // to start publishing instead of issuing a competing stop/start.
-    if (this.streamResolver.isNegotiating) {
+    // Case 2: a live stream negotiation for this camera is in flight — wait for
+    // the RTMP stream to start publishing instead of issuing a competing stop/start.
+    if (this.streamResolver.isNegotiating(this.babyUid)) {
       this.log.debug(`[${this.cameraName}] Prebuffer: stream negotiation in progress, waiting for RTMP stream`);
       const url = await this.streamResolver.waitForActiveStream(this.babyUid, 30_000);
-      if (url) return url;
+      if (url) return { url, type: 'local' };
       throw new Error('Timed out waiting for active stream during negotiation');
     }
 
     // Case 3: trigger a new negotiation
     const info = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
-    return info.url;
+    return { url: info.url, type: info.type };
   }
 
   /**
@@ -342,6 +352,7 @@ export class NanitPrebuffer {
     if (this.ffmpeg) {
       const proc = this.ffmpeg;
       this.ffmpeg = null;
+      this.streamSource = null;
       proc.kill('SIGTERM');
       const forceKill = setTimeout(() => {
         try { proc.kill('SIGKILL'); } catch { /* already dead */ }

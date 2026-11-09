@@ -49,6 +49,8 @@ interface SessionInfo {
 }
 
 interface ActiveSession {
+  /** Where the camera sends this view's video: the local RTMP server or Nanit's cloud. */
+  source: 'local' | 'cloud';
   mainProcess?: FfmpegProcess;
   returnProcess?: FfmpegProcess;
   timeout?: ReturnType<typeof setTimeout>;
@@ -61,6 +63,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly videoProcessor: string;
   private readonly pendingSessions = new Map<string, SessionInfo>();
   private readonly ongoingSessions = new Map<string, ActiveSession>();
+  /** Sessions between the start request and the choice of their source. */
+  private readonly startingSessions = new Set<string>();
   private cachedSnapshot: Buffer | null = null;
 
   private readonly maxWidth: number;
@@ -71,8 +75,24 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
   private readonly debug: boolean;
   private talkbackEnabled: boolean;
 
-  /** Set to a function that returns true if the HKSV prebuffer is active */
-  isPrebufferActive: (() => boolean) | undefined;
+  /**
+   * Set to a function that returns true while something else (the HKSV
+   * prebuffer, the stream keep-alive) still needs the camera to keep
+   * publishing after the last live-view session ends.
+   */
+  shouldKeepCameraStreaming: (() => boolean) | undefined;
+
+  /**
+   * True while a HomeKit live view runs on the cloud stream, or is still
+   * choosing its source and may end up there.
+   */
+  get hasCloudOrStartingSessions(): boolean {
+    if (this.startingSessions.size > 0) return true;
+    for (const session of this.ongoingSessions.values()) {
+      if (session.source === 'cloud') return true;
+    }
+    return false;
+  }
 
   constructor(
     private readonly log: Logging,
@@ -264,10 +284,12 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
       return;
     }
 
+    this.startingSessions.add(request.sessionID);
     let streamInfo;
     try {
       streamInfo = await this.streamResolver.getStreamSource(this.babyUid, this.wsClient);
     } catch (err) {
+      this.startingSessions.delete(request.sessionID);
       this.log.error(`[${this.cameraName}] Failed to get stream source:`, err);
       callback(err as Error);
       return;
@@ -340,7 +362,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
 
     ffmpegArgs.push('-progress', 'pipe:1');
 
-    const activeSession: ActiveSession = {};
+    const activeSession: ActiveSession = { source: streamInfo.type };
 
     // RTCP feedback socket for stream health monitoring
     activeSession.socket = createSocket(sessionInfo.ipv6 ? 'udp6' : 'udp4');
@@ -376,6 +398,7 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     }
 
     this.ongoingSessions.set(request.sessionID, activeSession);
+    this.startingSessions.delete(request.sessionID);
     this.pendingSessions.delete(request.sessionID);
     callback();
   }
@@ -511,8 +534,8 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.ongoingSessions.delete(sessionId);
 
     if (this.ongoingSessions.size === 0) {
-      if (this.isPrebufferActive?.()) {
-        this.log.debug(`[${this.cameraName}] Not stopping camera stream — prebuffer is still active`);
+      if (this.shouldKeepCameraStreaming?.()) {
+        this.log.debug(`[${this.cameraName}] Not stopping camera stream — prebuffer or keep-alive still needs it`);
       } else {
         this.streamResolver.stopStream(this.wsClient).catch(() => {
           // Best effort

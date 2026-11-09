@@ -10,6 +10,7 @@ export class LocalRtmpServer {
   /** Maps stream path → publisher IP (extracted from the RTMP session remote address) */
   private publisherIps = new Map<string, string>();
   private readonly allowedIps = new Set<string>(['127.0.0.1', '::1']);
+  private readonly streamEndedListeners = new Set<(streamKey: string) => void>();
 
   constructor(
     private readonly log: Logging,
@@ -103,6 +104,11 @@ export class LocalRtmpServer {
       this.log.debug(`RTMP stream ended: ${streamPath}`);
       this.activeStreams.delete(streamPath);
       this.publisherIps.delete(streamPath);
+
+      const streamKey = streamPath.replace(/^\/live\//, '');
+      for (const listener of this.streamEndedListeners) {
+        try { listener(streamKey); } catch { /* ignore listener errors */ }
+      }
     });
 
     this.nms.run();
@@ -110,6 +116,12 @@ export class LocalRtmpServer {
     this.log.info(`Local RTMP server started on port ${this._port}`);
 
     return this._port;
+  }
+
+  /** Called with the stream key whenever a publisher stops pushing. Returns an unsubscribe function. */
+  onStreamEnded(listener: (streamKey: string) => void): () => void {
+    this.streamEndedListeners.add(listener);
+    return () => { this.streamEndedListeners.delete(listener); };
   }
 
   isStreamActive(streamKey: string): boolean {

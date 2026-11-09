@@ -14,6 +14,7 @@ import { CameraToggleServices } from './services/extras.js';
 import { SoundTrackServices } from './services/soundtracks.js';
 import { NanitPrebuffer } from './prebuffer.js';
 import { NanitRecordingDelegate } from './recording.js';
+import { NanitStreamKeepAlive } from './keepalive.js';
 
 export class NanitCameraAccessory {
   private streamingDelegate: NanitStreamingDelegate;
@@ -24,6 +25,7 @@ export class NanitCameraAccessory {
   private cameraToggles?: CameraToggleServices;
   private prebuffer?: NanitPrebuffer;
   private recordingDelegate?: NanitRecordingDelegate;
+  private keepAlive?: NanitStreamKeepAlive;
 
   constructor(
     public readonly platform: NanitPlatform,
@@ -98,10 +100,21 @@ export class NanitCameraAccessory {
       recordingOptions,
     );
 
-    if (this.prebuffer) {
-      const prebuf = this.prebuffer;
-      this.streamingDelegate.isPrebufferActive = () => prebuf.isActive;
+    if (config.keepStreamAlive && config.streamMode !== 'cloud') {
+      this.keepAlive = new NanitStreamKeepAlive(
+        log,
+        cameraInfo.babyName,
+        cameraInfo.babyUid,
+        streamResolver,
+        wsClient,
+        () => this.streamingDelegate.hasCloudOrStartingSessions || (this.prebuffer?.usesCloudStream ?? false),
+      );
     }
+
+    const prebuf = this.prebuffer;
+    const keepAlive = this.keepAlive;
+    this.streamingDelegate.shouldKeepCameraStreaming = () =>
+      (prebuf?.isActive ?? false) || (keepAlive?.keepsCameraStreaming ?? false);
 
     this.accessory.configureController(this.streamingDelegate.controller);
 
@@ -145,9 +158,12 @@ export class NanitCameraAccessory {
           .updateCharacteristic(Characteristic.FirmwareRevision, state.firmwareVersion);
       }
     });
+
+    this.keepAlive?.start();
   }
 
   destroy(): void {
+    this.keepAlive?.stop();
     this.prebuffer?.destroy();
   }
 }
