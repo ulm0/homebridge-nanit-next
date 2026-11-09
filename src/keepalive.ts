@@ -88,8 +88,12 @@ export class NanitStreamKeepAlive {
       }
     }));
 
-    // Belt and braces for anything the events above miss.
-    this.watchdogTimer = setInterval(() => { void this.ensure(); }, WATCHDOG_INTERVAL_MS);
+    // Belt and braces for anything the events above miss. A pending retry
+    // timer owns the next attempt, so the watchdog never cuts a backoff short.
+    this.watchdogTimer = setInterval(() => {
+      if (this.retryTimer) return;
+      void this.ensure();
+    }, WATCHDOG_INTERVAL_MS);
 
     void this.ensure();
   }
