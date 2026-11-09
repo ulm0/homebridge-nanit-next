@@ -111,8 +111,21 @@ export class NanitCameraAccessory {
     const enableSound = cameraConfig?.enableSound ?? true;
     const enableSensors = cameraConfig?.enableSensors ?? true;
 
+    // Homebridge restores every service from its cache. A service whose
+    // feature the config disables has to be removed here, or it stays in
+    // HomeKit. The toggle switches do the same for themselves.
+    const removeCached = (names: string[]) => {
+      for (const name of names) {
+        const stale = accessory.getService(name);
+        if (stale) accessory.removeService(stale);
+      }
+    };
+    const trackNames = ['Sound: Birds', 'Sound: Waves', 'Sound: White Noise', 'Sound: Wind'];
+
     if (enableLight) {
       this.nightLightService = new NightLightService(this, log, wsClient);
+    } else {
+      removeCached(['Night Light']);
     }
 
     if (enableSound) {
@@ -120,17 +133,17 @@ export class NanitCameraAccessory {
       const enableTrackSwitches = cameraConfig?.enableSoundTracks ?? true;
       if (enableTrackSwitches) {
         this.soundTrackServices = new SoundTrackServices(this, log, wsClient);
+      } else {
+        removeCached(trackNames);
       }
     } else {
-      // If sound disabled, also strip any cached track switches
-      for (const name of ['Sound: Birds', 'Sound: Waves', 'Sound: White Noise', 'Sound: Wind']) {
-        const stale = accessory.getService(name);
-        if (stale) accessory.removeService(stale);
-      }
+      removeCached(['Sound Machine', ...trackNames]);
     }
 
     if (enableSensors) {
       this.sensorServices = new SensorServices(this, log, wsClient);
+    } else {
+      removeCached(['Temperature', 'Humidity']);
     }
 
     this.cameraToggles = new CameraToggleServices(this, log, wsClient, {
