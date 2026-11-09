@@ -192,7 +192,7 @@
             "title": "Input Probe Time (ms)",
             "type": "integer",
             "default": 5000,
-            "minimum": 0,
+            "minimum": 100,
             "maximum": 10000,
             "description": "How long FFmpeg analyzes the camera stream before a live view starts. Lower starts faster; on a Nanit Pro, 1000 still started with audio. Raise it if audio is missing."
           }

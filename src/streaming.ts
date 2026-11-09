@@ -94,7 +94,9 @@ export class NanitStreamingDelegate implements CameraStreamingDelegate {
     this.maxBitrate = config.videoConfig?.maxBitrate ?? 2000;
     this.enableAudio = config.videoConfig?.audio ?? true;
     this.debug = config.videoConfig?.debug ?? false;
-    this.probeUs = Math.max(0, config.videoConfig?.probeMs ?? 5000) * 1000;
+    // Minimum 100 ms: FFmpeg treats an analyzeduration of 0 as "use the default",
+    // which is 5 s again (libavformat/demux.c, avformat_find_stream_info).
+    this.probeUs = Math.max(100, config.videoConfig?.probeMs ?? 5000) * 1000;
     // Talk-back disabled by default. Camera firmware probed (Pro/Gen 2/3,
     // version 6.55.611) advertises only PLAY/DESCRIBE/SETUP/TEARDOWN on
     // RTSP — no ANNOUNCE method, so the existing RTSP-push path can never
