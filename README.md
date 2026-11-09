@@ -180,6 +180,7 @@ Authentication is handled via the UI wizard. No credentials need to be in the co
 | `maxBitrate` | number | `2000` | Maximum bitrate in kbps |
 | `audio` | boolean | `true` | Enable audio streaming |
 | `debug` | boolean | `false` | Enable verbose FFmpeg logging |
+| `probeMs` | number | `5000` | How long FFmpeg analyzes the camera stream before a live view starts (ms, minimum `100`). Lower starts faster; on a Nanit Pro, `1000` still started with audio. Raise it if audio is missing |
 
 ## Development
 

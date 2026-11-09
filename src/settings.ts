@@ -52,6 +52,8 @@ export interface NanitPlatformConfig {
     maxBitrate?: number;
     audio?: boolean;
     debug?: boolean;
+    /** How long FFmpeg analyzes the RTMP input before starting (ms). Default 5000, minimum 100. */
+    probeMs?: number;
   };
   debug?: {
     probe?: boolean;
