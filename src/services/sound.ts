@@ -40,10 +40,23 @@ export class SoundMachineService {
       .onGet(this.getVolume.bind(this))
       .onSet(this.setVolume.bind(this));
 
+    // The camera names its track only in playback messages, so after a
+    // restart the plugin knows no track and "on" would play the default
+    // (Birds) instead of the track that played last. Homebridge persists the
+    // accessory context, so the last reported track is remembered there.
+    const remembered = accessory.accessory.context.lastSoundTrack;
+    if (typeof remembered === 'string') {
+      wsClient.seedSoundTrack(remembered);
+    }
+
     wsClient.onStateChange((state) => {
       if (state.soundPlaying !== undefined) {
         this.isPlaying = state.soundPlaying;
         this.service.updateCharacteristic(Characteristic.On, this.isPlaying);
+      }
+      if (state.soundTrack !== undefined && state.soundTrack !== accessory.accessory.context.lastSoundTrack) {
+        accessory.accessory.context.lastSoundTrack = state.soundTrack;
+        accessory.platform.api.updatePlatformAccessories([accessory.accessory]);
       }
       if (state.volume !== undefined) {
         this.volume = state.volume;
