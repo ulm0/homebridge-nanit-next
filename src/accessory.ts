@@ -4,7 +4,7 @@ import type { NanitWebSocketClient } from './nanit/websocket.js';
 import type { NanitApiClient } from './nanit/api.js';
 import type { StreamResolver } from './stream/resolver.js';
 import type { CameraInfo } from './nanit/types.js';
-import type { NanitPlatformConfig } from './settings.js';
+import type { NanitPlatformConfig, CameraConfig } from './settings.js';
 import { HKSV_RECORDING_OPTIONS } from './settings.js';
 import { NanitStreamingDelegate } from './streaming.js';
 import { NightLightService } from './services/light.js';
@@ -34,6 +34,8 @@ export class NanitCameraAccessory {
     private readonly nanitApi: NanitApiClient,
     private readonly streamResolver: StreamResolver,
     private readonly config: NanitPlatformConfig,
+    /** The `cameras` entry the platform resolved for this camera, by babyUid or by auto-association. */
+    private readonly cameraConfig?: CameraConfig,
   ) {
     const { Characteristic, Service } = platform;
 
@@ -105,7 +107,6 @@ export class NanitCameraAccessory {
 
     this.accessory.configureController(this.streamingDelegate.controller);
 
-    const cameraConfig = config.cameras?.find(c => c.babyUid === cameraInfo.babyUid);
     const enableLight = cameraConfig?.enableLight ?? true;
     const enableSound = cameraConfig?.enableSound ?? true;
     const enableSensors = cameraConfig?.enableSensors ?? true;

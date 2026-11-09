@@ -20,6 +20,9 @@ export const HKSV_MOTION_COOLDOWN_MS = 10_000;
 
 export type StreamMode = 'local' | 'cloud' | 'auto';
 
+/** One entry of `cameras` in the plugin config. */
+export type CameraConfig = NonNullable<NanitPlatformConfig['cameras']>[number];
+
 export interface NanitPlatformConfig {
   name: string;
   auth?: {
