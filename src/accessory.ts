@@ -113,7 +113,7 @@ export class NanitCameraAccessory {
     const prebuf = this.prebuffer;
     const keepAlive = this.keepAlive;
     this.streamingDelegate.shouldKeepCameraStreaming = () =>
-      (prebuf?.isActive ?? false) || (keepAlive?.isActive ?? false);
+      (prebuf?.isActive ?? false) || (keepAlive?.keepsCameraStreaming ?? false);
 
     this.accessory.configureController(this.streamingDelegate.controller);
 

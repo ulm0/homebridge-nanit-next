@@ -42,6 +42,15 @@ export class NanitStreamKeepAlive {
     return this.active;
   }
 
+  /**
+   * True when the camera's current push is one this keep-alive wants kept:
+   * the keep-alive runs and the camera publishes to the local RTMP server.
+   * A cloud push (auto mode, local negotiation failed) is not kept.
+   */
+  get keepsCameraStreaming(): boolean {
+    return this.active && this.streamResolver.getActiveLocalPlayUrl(this.babyUid) !== null;
+  }
+
   start(): void {
     if (this.active) return;
     this.active = true;
